@@ -7,6 +7,8 @@
     <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" aria-label="导出文件名" />
 </div>
 <div style="margin-top: 5px;">
+    <a v-if="!mdup" style="margin-inline-start: 15px;" href="javascript:;" class="a-upload btn btn-primary btn-sm"><input type="file" ref="mdfile" @change="up_md()">上传markdown</a>
+    <button v-if="mdup" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
     <button v-if="!mddown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_md()">
         导出markdown
     </button>
@@ -60,6 +62,29 @@ body {
     margin-bottom: 0px;
     margin-left: 0px;
 }
+
+.a-upload {
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+    display: inline-block;
+    *display: inline;
+    *zoom: 1
+}
+
+.a-upload input {
+    position: absolute;
+    font-size: 100px;
+    right: 0;
+    top: 0;
+    opacity: 0;
+    filter: alpha(opacity=0);
+    cursor: pointer
+}
+
+.a-upload:hover {
+    text-decoration: none
+}
 </style>
 
 <script>
@@ -67,7 +92,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import FileSaver from 'file-saver'
+import FileSaver from 'file-saver';
 export default {
     data() {
         return {
@@ -76,6 +101,7 @@ export default {
             pdfdown: false,
             jpgdown: false,
             mddown: false,
+            mdup: false
         }
     },
 
@@ -137,6 +163,18 @@ export default {
             FileSaver.saveAs(blob, this.filename + '.md')
             this.mddown = false
 
+        },
+        up_md() {
+            this.mdup = true
+
+            var reader = new FileReader();
+            reader.readAsText(this.$refs.mdfile.files[0])
+            reader.onload = () => {
+                this.mdtext = reader.result;
+                this.filename = this.$refs.mdfile.files[0]['name'].slice(0, this.$refs.mdfile.files[0]['name'].lastIndexOf("."));
+            };
+
+            this.mdup = false
         },
         get_md(mds) {
             const md = MarkdownIt({
