@@ -13,6 +13,11 @@
         导出markdown
     </button>
     <button v-if="mddown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
+    <button v-if="!htmldown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_html()">
+        导出html
+    </button>
+    <button v-if="htmldown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
+
     <button v-if="!pdfdown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
         导出pdf
     </button>
@@ -35,6 +40,8 @@
     <button class="BtnGroup-item btn btn-sm" @click="add1('\n\`\`\`\n')">代码块</button>
     <button class="BtnGroup-item btn btn-sm" @click="add2('> ')">引用</button>
     <button class="BtnGroup-item btn btn-sm" @click="add2('- ')">无序列表</button>
+    <button class="BtnGroup-item btn btn-sm" @click="add2('- [ ] ')">任务列表</button>
+    <button class="BtnGroup-item btn btn-sm" @click="add2('[[TOC]]\n')">目录</button>
     <button class="BtnGroup-item btn btn-sm" @click="add2('------\n')">分割线</button>
 </span>
 <div>
@@ -52,6 +59,7 @@
 <style lang="scss">
 @import "@primer/css/index.scss";
 @import "highlight.js/styles/github.css";
+@import "katex/dist/katex.css";
 
 html,
 body {
@@ -83,7 +91,11 @@ body {
 }
 
 .a-upload:hover {
-    text-decoration: none
+    text-decoration: none;
+}
+
+.annotation {
+    display: none;
 }
 </style>
 
@@ -93,6 +105,13 @@ import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import FileSaver from 'file-saver';
+import taskLists from 'markdown-it-task-lists'
+import emoji from 'markdown-it-emoji'
+import toc from 'markdown-it-table-of-contents'
+import mk from 'markdown-it-texmath'
+import katex from 'katex'
+import footnote from 'markdown-it-footnote'
+import github from './github.css?raw'
 export default {
     data() {
         return {
@@ -101,6 +120,7 @@ export default {
             pdfdown: false,
             jpgdown: false,
             mddown: false,
+            htmldown: false,
             mdup: false
         }
     },
@@ -164,6 +184,12 @@ export default {
             this.mddown = false
 
         },
+        to_html() {
+            this.htmldown = true
+            var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
+            FileSaver.saveAs(blob, this.filename + '.html')
+            this.htmldown = false
+        },
         up_md() {
             this.mdup = true
 
@@ -190,6 +216,16 @@ export default {
 
                     return ''; // use external default escaping
                 }
+            }).use(taskLists, {
+                enabled: true
+            }).use(emoji).use(toc).use(footnote).use(mk, {
+                engine: katex,
+                delimiters: 'dollars',
+                katexOptions: {
+                    macros: {
+                        "\\RR": "\\mathbb{R}"
+                    }
+                }
             });
             const content = md.render(mds)
             return content
@@ -205,8 +241,8 @@ export default {
         },
         add2(str1) {
             const oldloc = this.$refs.input.selectionEnd
-            //console.log(this.mdtext.slice(oldloc - 1, oldloc) == '\n' , this.mdtext.slice(0, oldloc - 1).search('\n') == -1 , this.mdtext.slice(0, oldloc - 1).search(str1) != -1)
-            if (this.mdtext.slice(oldloc - 1, oldloc) == '\n' || (this.mdtext.slice(0, oldloc - 1).search('\n') == -1 && this.mdtext.slice(0, oldloc).search(str1) == -1)) {
+            console.log(this.mdtext.slice(oldloc - 1, oldloc) == '\n', this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1, this.mdtext.slice(0, oldloc - 1).indexOf(str1) != -1)
+            if (this.mdtext.slice(oldloc - 1, oldloc) == '\n' || (this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1 && this.mdtext.slice(0, oldloc).indexOf(str1) == -1)) {
                 this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
                 var enter = 0
             } else {
