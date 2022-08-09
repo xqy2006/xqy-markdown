@@ -9,20 +9,20 @@
 <div style="margin-top: 5px;">
     <a v-if="!mdup" style="margin-inline-start: 15px;" href="javascript:;" class="a-upload btn btn-primary btn-sm"><input type="file" accept=".md," ref="mdfile" @change="up_md()">上传markdown</a>
     <button v-if="mdup" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
-    <button v-if="!mddown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_md()">
+    <button v-if="!mddown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_md()">
         导出markdown
     </button>
     <button v-if="mddown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
-    <button v-if="!htmldown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_html()">
+    <button v-if="!htmldown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_html()">
         导出html
     </button>
     <button v-if="htmldown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
 
-    <button v-if="!pdfdown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
+    <button v-if="!pdfdown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
         导出pdf
     </button>
     <button v-if="pdfdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
-    <button v-if="!jpgdown" :disabled="filename==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_jpg()">
+    <button v-if="!jpgdown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_jpg()">
         导出jpg
     </button>
     <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
