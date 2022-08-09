@@ -104,7 +104,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import FileSaver from 'file-saver';
+//import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
 import emoji from 'markdown-it-emoji'
 import toc from 'markdown-it-table-of-contents'
@@ -163,7 +163,7 @@ export default {
                 }
                 let blob = pdf.output('blob')
                 blob = blob.slice(0, blob.size, 'application/octet-stream')
-                FileSaver.saveAs(blob, this.filename + '.pdf')
+                this.blobdownload(blob, this.filename + '.pdf')
                 //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
                 this.pdfdown = false
             });
@@ -173,21 +173,21 @@ export default {
             this.jpgdown = true
             html2canvas(this.$refs.md).then((canvas) => {
                 let blob = canvas.toDataURL('image/jpeg', 1.0);
-                FileSaver.saveAs(blob, this.filename + '.jpg')
+                this.imageblobdownload(blob, this.filename + '.jpg')
                 this.jpgdown = false
             });
         },
         to_md() {
             this.mddown = true
             var blob = new Blob([this.mdtext])
-            FileSaver.saveAs(blob, this.filename + '.md')
+            this.blobdownload(blob, this.filename + '.md')
             this.mddown = false
 
         },
         to_html() {
             this.htmldown = true
             var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
-            FileSaver.saveAs(blob, this.filename + '.html')
+            this.blobdownload(blob, this.filename + '.html')
             this.htmldown = false
         },
         up_md() {
@@ -326,6 +326,38 @@ export default {
             }
 
             return [start, end - start];
+        },
+        blobdownload(blob,name){
+            if ("download" in document.createElement("a")) {
+            // 非IE下载
+            let elink = document.createElement("a");
+            elink.download = name;
+            elink.style.display = "none";
+            elink.href = URL.createObjectURL(blob);
+            document.body.appendChild(elink);
+            elink.click();
+            URL.revokeObjectURL(elink.href); // 释放URL 对象
+            document.body.removeChild(elink);
+          } else {
+            // IE10+下载
+            navigator.msSaveBlob(blob, name);
+          }
+        },
+        imageblobdownload(blob,name){
+            if ("download" in document.createElement("a")) {
+            // 非IE下载
+            let elink = document.createElement("a");
+            elink.download = name;
+            elink.style.display = "none";
+            elink.href = blob;
+            document.body.appendChild(elink);
+            elink.click();
+            URL.revokeObjectURL(elink.href); // 释放URL 对象
+            document.body.removeChild(elink);
+          } else {
+            // IE10+下载
+            navigator.msSaveBlob(blob, name);
+          }
         }
     },
 }
