@@ -41,8 +41,8 @@
     <button class="BtnGroup-item btn btn-sm" @click="add2('> ')">引用</button>
     <button class="BtnGroup-item btn btn-sm" @click="add2('- ')">无序列表</button>
     <button class="BtnGroup-item btn btn-sm" @click="add2('- [ ] ')">任务列表</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add2('\n[[TOC]]\n')">目录</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add2('\n------\n')">分割线</button>
+    <button class="BtnGroup-item btn btn-sm" @click="add3('[[TOC]]')">目录</button>
+    <button class="BtnGroup-item btn btn-sm" @click="add3('------')">分割线</button>
 </span>
 <div>
     <textarea style="margin-top: 5px;width: 100%;height: 250px" class="form-control" v-model="mdtext" ref="input"></textarea>
@@ -252,19 +252,23 @@ export default {
                 this.mdtext = this.mdtext.slice(0, start) + str1 + this.mdtext.slice(start)
                 var enter = str1.length
             }
-            //const oldloc = this.$refs.input.selectionEnd
-            //console.log(this.mdtext.slice(oldloc - 1, oldloc) == '\n', this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1, this.mdtext.slice(0, oldloc - 1).indexOf(str1) != -1)
-            //if (this.mdtext.slice(oldloc - 1, oldloc) == '\n' || (this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1 && this.mdtext.slice(0, oldloc).indexOf(str1) == -1)) {
-            //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
-            //var enter = 0
-            //} else {
-            //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + "\n" + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
-            //var enter = 1
-            //}
             this.$refs.input.focus();
             this.$nextTick(() => {
                 this.$refs.input.selectionStart = oldlocs + enter
                 this.$refs.input.selectionEnd = oldloc + enter
+            })
+        },
+        add3(str1) {
+            const oldlocs = this.$refs.input.selectionStart
+            const oldloc = this.$refs.input.selectionEnd
+            var start = this.current_line()[0]
+            var end = this.current_line()[1]
+            //console.log(end,end-start)
+            this.mdtext = this.mdtext.slice(0, end + start) + '\n' + str1 + '\n' + this.mdtext.slice(end + start)
+            this.$refs.input.focus();
+            this.$nextTick(() => {
+                this.$refs.input.selectionStart = end + start + str1.length + 2
+                this.$refs.input.selectionEnd = end + start + str1.length + 2
             })
         },
         title() {
