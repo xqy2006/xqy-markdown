@@ -245,60 +245,77 @@ export default {
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
             var end = this.current_line()[1]
-            if (this.mdtext.slice(start,start+str1.length)==str1){
-                this.mdtext = this.mdtext.slice(0,start)+this.mdtext.slice(start+str1.length)
-            }
-            else{
-                this.mdtext = this.mdtext.slice(0,start)+str1+this.mdtext.slice(start)
+            if (this.mdtext.slice(start, start + str1.length) == str1) {
+                this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + str1.length)
+                var enter = -str1.length
+            } else {
+                this.mdtext = this.mdtext.slice(0, start) + str1 + this.mdtext.slice(start)
+                var enter = str1.length
             }
             //const oldloc = this.$refs.input.selectionEnd
             //console.log(this.mdtext.slice(oldloc - 1, oldloc) == '\n', this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1, this.mdtext.slice(0, oldloc - 1).indexOf(str1) != -1)
             //if (this.mdtext.slice(oldloc - 1, oldloc) == '\n' || (this.mdtext.slice(0, oldloc - 1).indexOf('\n') == -1 && this.mdtext.slice(0, oldloc).indexOf(str1) == -1)) {
-                //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
-                //var enter = 0
+            //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+            //var enter = 0
             //} else {
-                //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + "\n" + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
-                //var enter = 1
+            //this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionEnd) + "\n" + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+            //var enter = 1
             //}
             this.$refs.input.focus();
             this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + str1.length
-                this.$refs.input.selectionEnd = oldloc + str1.length
+                this.$refs.input.selectionStart = oldlocs + enter
+                this.$refs.input.selectionEnd = oldloc + enter
             })
         },
         title() {
+            const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
-            const list = this.mdtext.split("\n")
-            //console.log(list[list.length - 1].search('# ') != -1)
-            var text = ''
-            if (list[list.length - 1].slice(0, 1) == '#') {
-                for (var i = 0; i < list.length - 1; i++) {
-                    text += list[i] + '\n'
-                }
-                if (list[list.length - 1].search('###### ') != -1) {
-                    this.mdtext = text + '#' + list[list.length - 1].slice(6)
-                } else {
-                    this.mdtext = text + '#' + list[list.length - 1]
-                }
-                var enter = 0
+            var start = this.current_line()[0]
+            var end = this.current_line()[1]
+            if (this.mdtext.slice(start, start + 7) == '###### ') {
+                this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + 7)
+                var enter = -7
             } else {
-                for (var i = 0; i < list.length - 1; i++) {
-                    text += list[i] + '\n'
+                if (this.mdtext.slice(start, start + 1) == '#') {
+                    this.mdtext = this.mdtext.slice(0, start) + '#' + this.mdtext.slice(start)
+                    var enter = 1
+                } else {
+                    this.mdtext = this.mdtext.slice(0, start) + '# ' + this.mdtext.slice(start)
+                    var enter = 2
                 }
-                this.mdtext = text + '# ' + list[list.length - 1]
-                var enter = 1
             }
+            //const oldloc = this.$refs.input.selectionEnd
+            //const list = this.mdtext.split("\n")
+            //console.log(list[list.length - 1].search('# ') != -1)
+            //var text = ''
+            //if (list[list.length - 1].slice(0, 1) == '#') {
+            //    for (var i = 0; i < list.length - 1; i++) {
+            //        text += list[i] + '\n'
+            //    }
+            //    if (list[list.length - 1].search('###### ') != -1) {
+            //        this.mdtext = text + '#' + list[list.length - 1].slice(6)
+            //    } else {
+            //        this.mdtext = text + '#' + list[list.length - 1]
+            //    }
+            //   var enter = 0
+            //} else {
+            //    for (var i = 0; i < list.length - 1; i++) {
+            //        text += list[i] + '\n'
+            //    }
+            //    this.mdtext = text + '# ' + list[list.length - 1]
+            //    var enter = 1
+            //}
             this.$refs.input.focus();
             this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldloc + 1 + enter
-                this.$refs.input.selectionEnd = oldloc + 1 + enter
+                this.$refs.input.selectionStart = oldlocs + enter
+                this.$refs.input.selectionEnd = oldloc + enter
             })
         },
         current_line() {
-                var pos = this.$refs.input.selectionStart
-                var taval = this.mdtext
-                var start = taval.lastIndexOf('\n', pos - 1) + 1
-                var end = taval.indexOf('\n', pos);
+            var pos = this.$refs.input.selectionStart
+            var taval = this.mdtext
+            var start = taval.lastIndexOf('\n', pos - 1) + 1
+            var end = taval.indexOf('\n', pos);
 
             if (end == -1) {
                 end = taval.length;
