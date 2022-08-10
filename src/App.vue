@@ -454,12 +454,14 @@ export default {
             var pos = this.$refs.input.selectionStart
             var taval = this.mdtext
             var start = taval.lastIndexOf('\n', pos - 1) + 1
+            if (pos == 0) {
+                pos = 1
+                start = 0
+            }
             var end = taval.indexOf('\n', pos);
-
             if (end == -1) {
                 end = taval.length;
             }
-
             return [start, end - start];
         }
     },
