@@ -282,7 +282,7 @@ export default {
                     }
                     // console.log(lines)
                     let result = ''
-                    console.log(lines.length.toString().length)
+                    //console.log(lines.length.toString().length)
                     lines.forEach(line => {
                         //console.log(lang, line,hljs.highlight(lang, line, true).value)
                         result += `<li>${line}</li>`
@@ -368,11 +368,18 @@ export default {
         add1(str1) {
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
-            this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+
+            if (str1 == '\n\`\`\`\n') {
+                this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + '\n\`\`\`Plaintext\n' + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+                enter = 9
+            } else {
+                this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+                var enter = 0
+            }
             this.$refs.input.focus();
             this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + str1.length
-                this.$refs.input.selectionEnd = oldloc + str1.length
+                this.$refs.input.selectionStart = oldlocs + str1.length + enter
+                this.$refs.input.selectionEnd = oldloc + str1.length + enter
             })
         },
         add2(str1) {
