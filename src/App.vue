@@ -105,6 +105,7 @@ code {
 
 ol li {
     border-left: 1px solid #c5c5c5;
+    color: #6e7781;
 }
 </style>
 
@@ -223,7 +224,7 @@ export default {
                         let result = ''
                         lines.pop()
                         lines.forEach(line => {
-                            result += `<li>${line}</li>`
+                            result += `<li style="margin-top: 0;margin-inline-start: 15px;"><span style="color: #24292f;">${line}</span></li>`
                         })
                         return `<pre class="hljs"><code><ol>${result}</ol></code></pre>`
 
@@ -235,7 +236,7 @@ export default {
                         let result = ''
                         lines.pop()
                         lines.forEach(line => {
-                            result += `<li>${line}</li>`
+                            result += `<li style="margin-top: 0;margin-inline-start: 15px;"><span style="color: #24292f;">${line}</span></li>`
                         })
                         return `<pre class="hljs"><code><ol>${result}</ol></code></pre>`; // use external default escaping
                     }
