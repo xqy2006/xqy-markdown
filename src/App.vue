@@ -99,7 +99,7 @@ body {
 }
 
 code {
-    white-space: pre-line !important;
+    white-space: pre-wrap !important;
     word-wrap: break-word !important;
 }
 
