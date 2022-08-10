@@ -50,7 +50,7 @@
 <div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
     <h4>预览：</h4>
 </div>
-<div style="margin-top: 15px;" class="markdown-body" ref="md">
+<div style="margin-top: 15px;margin-inline-start: 15px;margin-inline-end: 15px;" class="markdown-body" ref="md">
     <div v-html="get_md(mdtext)">
     </div>
 </div>
@@ -97,6 +97,45 @@ body {
 .annotation {
     display: none;
 }
+
+.hljs {
+    border: 0;
+    font-size: 12px;
+    display: block;
+    padding: 1px;
+    margin: 0;
+    width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+ol {
+    margin: 0px 0px 0 0px !important;
+    padding: 0px;
+}
+
+ol li {
+    border-left: 1px solid #ddd !important;
+    white-space: pre-wrap;
+}
+
+.mypre {
+    padding: 5px 50px !important;
+    padding: 16px;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 6px;
+    margin-top: 0;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+}
+
+.katex .base {
+    width: 100% !important;
+}
 </style>
 
 <script>
@@ -112,6 +151,26 @@ import mk from 'markdown-it-texmath'
 import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
+var unescapeAll = function unescapeAll(str) {
+    if (str.indexOf('\\') < 0 && str.indexOf('&') < 0) {
+        return str;
+    }
+
+    return str.replace(UNESCAPE_ALL_RE, function (match, escaped, entity) {
+        if (escaped) {
+            return escaped;
+        }
+        return replaceEntityPattern(match, entity);
+    });
+}
+var escapeHtml = function escapeHtml(str) {
+    if (HTML_ESCAPE_TEST_RE.test(str)) {
+        return str.replace(HTML_ESCAPE_REPLACE_RE, replaceUnsafeChar);
+    }
+    return str;
+}
+const HTML_ESCAPE_TEST_RE = /[&<>"]/
+const HTML_ESCAPE_REPLACE_RE = /[&<>"]/g
 export default {
     data() {
         return {
@@ -206,15 +265,36 @@ export default {
             const md = MarkdownIt({
                 breaks: true,
                 highlight: function (str, lang) {
+                    // console.log(str, lang)
+                    //if (!lang) {
+                    //    let lang = 'Plaintext'
+                    //}
+                    var lines;
+                    try {
+                        lines = hljs.highlight(str, {
+                            language: lang
+                        }).value.split('\n')
+                    } catch {}
+                    if (typeof lines == 'undefined') {
+                        let lines = hljs.highlight(str, {
+                            language: 'Plaintext'
+                        }).value.split('\n')
+                    }
+                    // console.log(lines)
+                    let result = ''
+                    console.log(lines.length.toString().length)
+                    lines.forEach(line => {
+                        //console.log(lang, line,hljs.highlight(lang, line, true).value)
+                        result += `<li>${line}</li>`
+                    })
                     if (lang && hljs.getLanguage(lang)) {
                         try {
-                            return hljs.highlight(str, {
-                                language: lang
-                            }).value;
+                            return `<ol class="mypre">${result}</ol>`
                         } catch (__) {}
                     }
+                    // return `<pre class="hljs"><code>${md.utils.escapeHtml(str)}</code></pre>`
+                    return `<ol class="mypre">${result}</ol>`
 
-                    return ''; // use external default escaping
                 }
             }).use(taskLists, {
                 enabled: true
@@ -227,6 +307,61 @@ export default {
                     }
                 }
             });
+            md.renderer.rules.fence = function (tokens, idx, options, env, slf) {
+                var token = tokens[idx],
+                    info = token.info ? unescapeAll(token.info).trim() : '',
+                    langName = '',
+                    langAttrs = '',
+                    highlighted, i, arr, tmpAttrs, tmpToken;
+
+                if (info) {
+                    arr = info.split(/(\s+)/g);
+                    langName = arr[0];
+                    langAttrs = arr.slice(2).join('');
+                }
+                //if (!langName) {
+                //    langName = 'Plaintext'
+                //}
+                if (options.highlight) {
+                    try {
+                        highlighted = options.highlight(token.content, langName, langAttrs) || escapeHtml(token.content);
+                    } catch {}
+                    if (typeof highlighted == 'undefined') {
+                        langName = 'Plaintext'
+                        highlighted = options.highlight(token.content, 'Plaintext', langAttrs) || escapeHtml(token.content);
+                    }
+                } else {
+                    highlighted = escapeHtml(token.content);
+                }
+
+                if (highlighted.indexOf('<pre') === 0) {
+                    return highlighted + '\n';
+                }
+
+                // If language exists, inject class gently, without modifying original token.
+                // May be, one day we will add .deepClone() for token and simplify this part, but
+                // now we prefer to keep things local.
+                if (info) {
+                    i = token.attrIndex('class');
+                    tmpAttrs = token.attrs ? token.attrs.slice() : [];
+
+                    if (i < 0) {
+                        tmpAttrs.push(['class', options.langPrefix + langName]);
+                    } else {
+                        tmpAttrs[i] = tmpAttrs[i].slice();
+                        tmpAttrs[i][1] += ' ' + options.langPrefix + langName;
+                    }
+
+                    // Fake token just to render attributes
+                    tmpToken = {
+                        attrs: tmpAttrs
+                    };
+
+                    return highlighted
+                }
+
+                return highlighted
+            };
             const content = md.render(mds)
             return content
         },
