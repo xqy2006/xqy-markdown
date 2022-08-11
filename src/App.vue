@@ -45,7 +45,7 @@
     <button class="BtnGroup-item btn btn-sm" @click="add3('------')">分割线</button>
 </span>
 <div>
-    <textarea style="margin-top: 5px;width: 100%;height: 250px" class="form-control" v-model="mdtext" ref="input"></textarea>
+    <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px" class="form-control" v-model="mdtext" ref="input"></textarea>
 </div>
 <div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
     <h4>预览：</h4>
@@ -114,7 +114,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import FileSaver from 'file-saver';
+//import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
 import emoji from 'markdown-it-emoji'
 import toc from 'markdown-it-table-of-contents'
@@ -138,7 +138,9 @@ export default {
     methods: {
         to_pdf(length) {
             this.pdfdown = true
-            html2canvas(this.$refs.md).then((canvas) => {
+            html2canvas(this.$refs.md, {
+                scale: 1.5
+            }).then((canvas) => {
                 var contentWidth = canvas.width;
                 var contentHeight = canvas.height;
 
@@ -173,7 +175,7 @@ export default {
                 }
                 let blob = pdf.output('blob')
                 blob = blob.slice(0, blob.size, 'application/octet-stream')
-                FileSaver.saveAs(blob, this.filename + '.pdf')
+                this.blob_download(blob, this.filename + '.pdf')
                 //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
                 this.pdfdown = false
             });
@@ -181,23 +183,32 @@ export default {
         },
         to_jpg() {
             this.jpgdown = true
-            html2canvas(this.$refs.md).then((canvas) => {
+            html2canvas(this.$refs.md, {
+                scale: 1.5
+            }).then((canvas) => {
                 let blob = canvas.toDataURL('image/jpeg', 1.0);
-                FileSaver.saveAs(blob, this.filename + '.jpg')
+                const link = document.createElement('a')
+                const body = document.querySelector('body')
+                link.href = blob
+                link.download = this.filename + '.jpg'
+                link.style.display = 'none'
+                body.appendChild(link)
+                link.click()
+                body.removeChild(link)
                 this.jpgdown = false
             });
         },
         to_md() {
             this.mddown = true
             var blob = new Blob([this.mdtext])
-            FileSaver.saveAs(blob, this.filename + '.md')
+            this.blob_download(blob, this.filename + '.md')
             this.mddown = false
 
         },
         to_html() {
             this.htmldown = true
             var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
-            FileSaver.saveAs(blob, this.filename + '.html')
+            this.blob_download(blob, this.filename + '.html')
             this.htmldown = false
         },
         up_md() {
@@ -355,7 +366,23 @@ export default {
                 end = taval.length;
             }
             return [start, end - start];
-        }
+        },
+        blob_download(blob, filename) {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onload = (e) => {
+                const link = document.createElement('a')
+                const body = document.querySelector('body')
+
+                link.href = e.target.result
+                link.download = filename
+                link.style.display = 'none'
+                body.appendChild(link)
+
+                link.click()
+                body.removeChild(link)
+            }
+        },
     },
 }
 </script>
