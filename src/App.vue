@@ -151,7 +151,8 @@ export default {
                     var bot = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
                     var top = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
                     var canvas = await html2canvas(e, {
-                        logging: false
+                        logging: false,
+                        windowWidth: 1024,
                     })
                     top = top / canvas.width * 592.28
                     bot = bot / canvas.width * 592.28
