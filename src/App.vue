@@ -50,7 +50,7 @@
 <div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
     <h4>预览：</h4>
 </div>
-<div style="margin-top: 15px;" class="markdown-body" ref="md">
+<div style="margin-top: 15px;" class="markdown-body" id="mdcontent" ref="md">
     <div v-html="get_md(mdtext)">
     </div>
 </div>
@@ -131,72 +131,103 @@ export default {
             jpgdown: false,
             mddown: false,
             htmldown: false,
-            mdup: false
+            mdup: false,
+            count: 0,
         }
     },
 
     methods: {
         to_pdf(length) {
+            this.count = 0;
+            //console.log(document.querySelectorAll(".markdown-body>div>*"));
+            var height = 0;
             this.pdfdown = true
-            html2canvas(this.$refs.md, {
-                scale: 1.5
-            }).then((canvas) => {
-                var contentWidth = canvas.width;
-                var contentHeight = canvas.height;
-
-                //一页pdf显示html页面生成的canvas高度;
-                var pageHeight = contentWidth / 592.28 * 841.89;
-                //未生成pdf的html页面高度
-                var leftHeight = contentHeight;
-                //页面偏移
-                var position = 0;
-                //a4纸的尺寸[595.28,841.89]，html页面生成的canvas在pdf中图片的宽高
-                var imgWidth = 595.28 - length * 2;
-                var imgHeight = (595.28 - length * 2) / contentWidth * contentHeight;
-
-                var pageData = canvas.toDataURL('image/jpeg', 1.0);
-
-                var pdf = new jsPDF('', 'pt', 'a4');
-
-                //有两个高度需要区分，一个是html页面的实际高度，和生成pdf的页面高度(841.89)
-                //当内容未超过pdf一页显示的范围，无需分页
-                if (leftHeight < pageHeight) {
-                    pdf.addImage(pageData, 'JPEG', length, 0, imgWidth, imgHeight);
-                } else {
-                    while (leftHeight > 0) {
-                        pdf.addImage(pageData, 'JPEG', length, position, imgWidth, imgHeight)
-                        leftHeight -= pageHeight;
-                        position -= 841.89;
-                        //避免添加空白页
-                        if (leftHeight > 0) {
-                            pdf.addPage();
+            var pdf = new jsPDF('', 'pt', 'a4');
+            var position = 0;
+            var a = async (leftpage) => {
+                for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
+                    var e = document.querySelectorAll(".markdown-body>div>*")[i]
+                    var index = i
+                    var bot = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
+                    var top = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
+                    var canvas = await html2canvas(e, {
+                        logging: false
+                    })
+                    top = top / canvas.width * 592.28
+                    bot = bot / canvas.width * 592.28
+                    var imgData = canvas.toDataURL('image/jpeg', 1.0)
+                    var img = new Image();
+                    img.src = imgData;
+                    img.onload = async () => {
+                        if (height + canvas.height + top + bot <= canvas.width / 592.28 * 841.89) {
+                            height += canvas.height + top + bot
+                            pdf.addImage(imgData, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
+                            position += canvas.height / canvas.width * 592.28 + bot
+                        } else {
+                            var canvasHeight = canvas.height + top + bot
+                            var usecanvas = 0
+                            position += top
+                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
+                                var leftheight = canvas.width / 592.28 * 841.89 - height
+                                canvasHeight = canvasHeight - leftheight
+                                var newcanvas = document.createElement('canvas');
+                                newcanvas.width = canvas.width;
+                                newcanvas.height = leftheight;
+                                var newctx = newcanvas.getContext('2d');
+                                newctx.drawImage(img, 0, usecanvas, canvas.width, leftheight, 0, 0, canvas.width, leftheight);
+                                var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
+                                pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
+                                pdf.addPage()
+                                usecanvas += leftheight
+                                height = 0
+                                position = 0
+                                //console.log(leftheight)
+                            }
+                            var newcanvas = document.createElement('canvas');
+                            newcanvas.width = canvas.width;
+                            newcanvas.height = canvas.height - usecanvas;
+                            var newctx = newcanvas.getContext('2d');
+                            newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
+                            height += canvasHeight
+                            var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
+                            pdf.addImage(newimgdata, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
+                            position += newcanvas.height / canvas.width * 592.28 + bot
                         }
+                        if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
+                            let blob = pdf.output('blob')
+                            blob = blob.slice(0, blob.size, 'application/octet-stream')
+                            this.blob_download(blob, this.filename + '.pdf')
+                            this.pdfdown = false
+                        }
+                        this.count += 1;
+                        //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
                     }
-                }
-                let blob = pdf.output('blob')
-                blob = blob.slice(0, blob.size, 'application/octet-stream')
-                this.blob_download(blob, this.filename + '.pdf')
-                //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
-                this.pdfdown = false
-            });
 
+                }
+            }
+            a(841.89)
         },
         to_jpg() {
             this.jpgdown = true
-            html2canvas(this.$refs.md, {
-                scale: 1.5
-            }).then((canvas) => {
-                let blob = canvas.toDataURL('image/jpeg', 1.0);
-                const link = document.createElement('a')
-                const body = document.querySelector('body')
-                link.href = blob
-                link.download = this.filename + '.jpg'
-                link.style.display = 'none'
-                body.appendChild(link)
-                link.click()
-                body.removeChild(link)
-                this.jpgdown = false
-            });
+            setTimeout(() => {
+                html2canvas(this.$refs.md, {
+                    scale: 1
+                }).then((canvas) => {
+                    let blob = canvas.toDataURL('image/jpeg', 1.0);
+
+                    const link = document.createElement('a')
+                    const body = document.querySelector('body')
+
+                    link.href = blob
+                    link.download = this.filename + '.jpg'
+                    link.style.display = 'none'
+                    body.appendChild(link)
+
+                    link.click()
+                    body.removeChild(link)
+                    this.jpgdown = false
+                });
+            }, 500)
         },
         to_md() {
             this.mddown = true
