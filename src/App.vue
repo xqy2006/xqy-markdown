@@ -190,7 +190,7 @@ export default {
                             newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
                             height += canvasHeight
                             var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                            pdf.addImage(newimgdata, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
+                            pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
                             position += newcanvas.height / canvas.width * 592.28 + bot
                         }
                         if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
