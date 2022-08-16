@@ -28,30 +28,38 @@
     <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button>
 
 </div>
-<div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
-    <h4>请输入markdown内容：</h4>
+<div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+    <div class="Box-header">
+        <h4>请输入markdown内容：</h4>
+    </div>
+    <div class="Box-row" id="buttons">
+        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
+        </span>
+    </div>
+    <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
+        <div>
+            <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
+        </div>
+    </div>
 </div>
-<span class="BtnGroup d-block mb-2" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow:auto;">
-    <button class="BtnGroup-item btn btn-sm" @click="add1('**')">粗体</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add1('*')">斜体</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add1('~~')">删除线</button>
-    <button class="BtnGroup-item btn btn-sm" @click="title()">标题</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add1('\`')">单行代码</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add1('\n\`\`\`\n')">代码块</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add2('> ')">引用</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add2('- ')">无序列表</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add2('- [ ] ')">任务列表</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add3('[[TOC]]')">目录</button>
-    <button class="BtnGroup-item btn btn-sm" @click="add3('------')">分割线</button>
-</span>
-<div>
-    <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px" class="form-control" v-model="mdtext" ref="input"></textarea>
-</div>
-<div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
-    <h4>预览：</h4>
-</div>
-<div style="margin-top: 15px;" class="markdown-body" id="mdcontent" ref="md">
-    <div v-html="get_md(mdtext)">
+<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+    <div class="Box-header">
+        <h4>预览：</h4>
+    </div>
+    <div class="markdown-body Box-row" id="mdcontent" ref="md">
+        <div v-html="get_md(mdtext)">
+        </div>
     </div>
 </div>
 </template>
@@ -106,6 +114,13 @@ code {
 ol li {
     border-left: 1px solid #c5c5c5;
     color: #6e7781;
+}
+#buttons{
+    padding: 0px;
+}
+#mytextarea{
+    padding: 5px 16px 16px;
+    margin-top: 5px
 }
 </style>
 
