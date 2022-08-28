@@ -227,7 +227,7 @@ export default {
             this.jpgdown = true
             setTimeout(() => {
                 html2canvas(this.$refs.md, {
-                    scale: 1
+                    scale: 2
                 }).then((canvas) => {
                     let blob = canvas.toDataURL('image/jpeg', 1.0);
 
