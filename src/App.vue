@@ -272,6 +272,7 @@ export default {
         },
         get_md(mds) {
             const md = MarkdownIt({
+                html: true,
                 breaks: true,
                 highlight: function (str, lang) {
                     if (lang && hljs.getLanguage(lang)) {
