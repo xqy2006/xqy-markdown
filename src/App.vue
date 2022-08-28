@@ -41,6 +41,9 @@
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
             <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=red>','</font>')">标红</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
@@ -393,6 +396,16 @@ export default {
             this.$nextTick(() => {
                 this.$refs.input.selectionStart = end + start + str1.length + 2
                 this.$refs.input.selectionEnd = end + start + str1.length + 2
+            })
+        },
+        add4(str1,str2) {
+            const oldlocs = this.$refs.input.selectionStart
+            const oldloc = this.$refs.input.selectionEnd
+            this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
+            this.$refs.input.focus();
+            this.$nextTick(() => {
+                this.$refs.input.selectionStart = oldlocs + str1.length
+                this.$refs.input.selectionEnd = oldloc + str1.length
             })
         },
         title() {
