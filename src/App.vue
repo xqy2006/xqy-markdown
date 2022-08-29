@@ -39,10 +39,11 @@
             <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=red>','</font>')">标红</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')">标红</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')">img</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
@@ -51,6 +52,25 @@
             <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
+        </span>
+        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')">叉乘</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')">除法</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')">换行</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')">求和</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')">求积</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')">极限</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')">积分</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')">大括号</button></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
