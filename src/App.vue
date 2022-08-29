@@ -7,27 +7,23 @@
 <div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
     <h1>markdown编辑器</h1>
 </div>
-<div style="margin-top: 15px;margin-inline-start: 15px;">
-    <b>请输入导出文件名：</b>
-    <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" aria-label="导出文件名" />
-</div>
 <div style="margin-top: 5px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
     <td><a v-if="!mdup" style="margin-inline-start: 15px;" href="javascript:;" class="a-upload btn btn-primary btn-sm"><input type="file" accept=".md," ref="mdfile" @change="up_md()">上传markdown</a>
         <button v-if="mdup" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
-    <td><button v-if="!mddown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_md()">
+    <td><button v-if="!mddown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_md()">
             导出markdown
         </button>
         <button v-if="mddown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
-    <td><button v-if="!htmldown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_html()">
+    <td><button v-if="!htmldown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_html()">
             导出html
         </button>
         <button v-if="htmldown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
 
-    <td><button v-if="!pdfdown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
+    <td><button v-if="!pdfdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
             导出pdf
         </button>
         <button v-if="pdfdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
-    <td><button v-if="!jpgdown" :disabled="filename=='' || mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_jpg()">
+    <td><button v-if="!jpgdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_jpg()">
             导出jpg
         </button>
         <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
@@ -35,7 +31,8 @@
 </div>
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
-        <h4>请输入markdown内容：</h4>
+        <b>文件名：</b>
+        <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" aria-label="导出文件名" />
     </div>
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
@@ -48,6 +45,7 @@
             <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
@@ -63,7 +61,7 @@
 </div>
 <div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
-        <h4>预览：</h4>
+        <b>预览：</b>
     </div>
     <div class="markdown-body Box-row" id="mdcontent" ref="md">
         <div v-html="get_md(mdtext)">
@@ -254,7 +252,7 @@ export default {
                         if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
                             let blob = pdf.output('blob')
                             blob = blob.slice(0, blob.size, 'application/octet-stream')
-                            this.blob_download(blob, this.filename + '.pdf')
+                            this.blob_download(blob, this.filename || 'undefined' + '.pdf')
                             this.pdfdown = false
                         }
                         this.count += 1;
@@ -277,7 +275,7 @@ export default {
                     const body = document.querySelector('body')
 
                     link.href = blob
-                    link.download = this.filename + '.jpg'
+                    link.download = this.filename || 'undefined' + '.jpg'
                     link.style.display = 'none'
                     body.appendChild(link)
 
@@ -290,14 +288,14 @@ export default {
         to_md() {
             this.mddown = true
             var blob = new Blob([this.mdtext])
-            this.blob_download(blob, this.filename + '.md')
+            this.blob_download(blob, this.filename || 'undefined' + '.md')
             this.mddown = false
 
         },
         to_html() {
             this.htmldown = true
             var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
-            this.blob_download(blob, this.filename + '.html')
+            this.blob_download(blob, this.filename || 'undefined' + '.html')
             this.htmldown = false
         },
         up_md() {
@@ -398,7 +396,7 @@ export default {
                 this.$refs.input.selectionEnd = end + start + str1.length + 2
             })
         },
-        add4(str1,str2) {
+        add4(str1, str2) {
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
