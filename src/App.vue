@@ -63,6 +63,7 @@
             <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')">根号</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
@@ -272,7 +273,7 @@ export default {
                         if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
                             let blob = pdf.output('blob')
                             blob = blob.slice(0, blob.size, 'application/octet-stream')
-                            this.blob_download(blob, this.filename || 'undefined' + '.pdf')
+                            this.blob_download(blob, (this.filename || 'undefined') + '.pdf')
                             this.pdfdown = false
                         }
                         this.count += 1;
@@ -295,7 +296,7 @@ export default {
                     const body = document.querySelector('body')
 
                     link.href = blob
-                    link.download = this.filename || 'undefined' + '.jpg'
+                    link.download = (this.filename || 'undefined') + '.jpg'
                     link.style.display = 'none'
                     body.appendChild(link)
 
@@ -308,14 +309,14 @@ export default {
         to_md() {
             this.mddown = true
             var blob = new Blob([this.mdtext])
-            this.blob_download(blob, this.filename || 'undefined' + '.md')
+            this.blob_download(blob, (this.filename || 'undefined') + '.md')
             this.mddown = false
 
         },
         to_html() {
             this.htmldown = true
             var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
-            this.blob_download(blob, this.filename || 'undefined' + '.html')
+            this.blob_download(blob, (this.filename || 'undefined') + '.html')
             this.htmldown = false
         },
         up_md() {
