@@ -29,6 +29,9 @@
         <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
 
 </div>
+<span class="Progress" v-if="pdfdown" style="margin-top: 10px;margin-inline-start: 15px;margin-inline-end: 15px;">
+  <span class="Progress-item color-bg-success-emphasis" :style="`width:`+(count/sum*100)+`%;`"></span>
+</span>
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>文件名：</b>
@@ -209,6 +212,7 @@ export default {
             htmldown: false,
             mdup: false,
             count: 0,
+            sum:1,
         }
     },
 
@@ -222,6 +226,7 @@ export default {
             var position = 0;
             var a = async (leftpage) => {
                 for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
+                    this.sum = document.querySelectorAll(".markdown-body>div>*").length
                     var e = document.querySelectorAll(".markdown-body>div>*")[i]
                     var index = i
                     var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
@@ -241,10 +246,10 @@ export default {
                             pdf.addImage(imgData, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
                             position += canvas.height / canvas.width * 592.28 + top + bot
                         } else {
-                            var canvasHeight = canvas.height + top + bot
+                            var canvasHeight = canvas.height
                             var usecanvas = 0
                             position += top
-                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
+                            while (height + canvasHeight + top1 + bot1 > canvas.width / 592.28 * 841.89) {
                                 var leftheight = canvas.width / 592.28 * 841.89 - height
                                 canvasHeight = canvasHeight - leftheight
                                 var newcanvas = document.createElement('canvas');
@@ -266,7 +271,7 @@ export default {
                             newcanvas.height = canvas.height - usecanvas;
                             var newctx = newcanvas.getContext('2d');
                             newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
-                            height += canvasHeight
+                            height += canvasHeight + top1 + bot1
                             var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
                             pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
                             position += newcanvas.height / canvas.width * 592.28 + top + bot
