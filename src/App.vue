@@ -224,22 +224,22 @@ export default {
                 for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
                     var e = document.querySelectorAll(".markdown-body>div>*")[i]
                     var index = i
-                    var bot = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
-                    var top = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
+                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
+                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
                     var canvas = await html2canvas(e, {
                         logging: false,
                         windowWidth: 1024,
                     })
-                    top = top / canvas.width * 592.28
-                    bot = bot / canvas.width * 592.28
+                    var top = top1 / canvas.width * 592.28
+                    var bot = bot1 / canvas.width * 592.28
                     var imgData = canvas.toDataURL('image/jpeg', 1.0)
                     var img = new Image();
                     img.src = imgData;
                     img.onload = async () => {
-                        if (height + canvas.height + top + bot <= canvas.width / 592.28 * 841.89) {
-                            height += canvas.height + top + bot
+                        if (height + canvas.height + top1 + bot1 <= canvas.width / 592.28 * 841.89) {
+                            height += canvas.height + top1 + bot1
                             pdf.addImage(imgData, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
-                            position += canvas.height / canvas.width * 592.28 + bot
+                            position += canvas.height / canvas.width * 592.28 + top + bot
                         } else {
                             var canvasHeight = canvas.height + top + bot
                             var usecanvas = 0
@@ -260,6 +260,7 @@ export default {
                                 position = 0
                                 //console.log(leftheight)
                             }
+                            usecanvas -= top1
                             var newcanvas = document.createElement('canvas');
                             newcanvas.width = canvas.width;
                             newcanvas.height = canvas.height - usecanvas;
@@ -268,7 +269,7 @@ export default {
                             height += canvasHeight
                             var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
                             pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                            position += newcanvas.height / canvas.width * 592.28 + bot
+                            position += newcanvas.height / canvas.width * 592.28 + top + bot
                         }
                         if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
                             let blob = pdf.output('blob')
