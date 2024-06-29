@@ -242,7 +242,7 @@ export default {
                     var img = new Image();
                     img.src = imgData;
                     img.onload = async () => {
-                        if (height + canvas.height + top1 + bot1 <= canvas.width / 592.28 * 841.89) {
+                        if (height + canvas.height <= canvas.width / 592.28 * 841.89) {
                             height += canvas.height
                             pdf.addImage(imgData, 'JPEG', length, position, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
                             position += canvas.height / canvas.width * 592.28
