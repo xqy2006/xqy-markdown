@@ -234,6 +234,7 @@ export default {
                     var canvas = await html2canvas(e, {
                         logging: false,
                         windowWidth: 1024,
+                        height:e.scrollHeight+top1,
                     })
                     var top = top1 / canvas.width * 592.28
                     var bot = bot1 / canvas.width * 592.28
@@ -242,14 +243,13 @@ export default {
                     img.src = imgData;
                     img.onload = async () => {
                         if (height + canvas.height + top1 + bot1 <= canvas.width / 592.28 * 841.89) {
-                            height += canvas.height + top1 + bot1
-                            pdf.addImage(imgData, 'JPEG', length, position + top, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
-                            position += canvas.height / canvas.width * 592.28 + top + bot
+                            height += canvas.height
+                            pdf.addImage(imgData, 'JPEG', length, position, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
+                            position += canvas.height / canvas.width * 592.28
                         } else {
                             var canvasHeight = canvas.height
                             var usecanvas = 0
-                            position += top
-                            while (height + canvasHeight + top1 + bot1 > canvas.width / 592.28 * 841.89) {
+                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
                                 var leftheight = canvas.width / 592.28 * 841.89 - height
                                 canvasHeight = canvasHeight - leftheight
                                 var newcanvas = document.createElement('canvas');
@@ -265,16 +265,15 @@ export default {
                                 position = 0
                                 //console.log(leftheight)
                             }
-                            usecanvas -= top1
                             var newcanvas = document.createElement('canvas');
                             newcanvas.width = canvas.width;
                             newcanvas.height = canvas.height - usecanvas;
                             var newctx = newcanvas.getContext('2d');
                             newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
-                            height += canvasHeight + top1 + bot1
+                            height += canvasHeight 
                             var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
                             pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                            position += newcanvas.height / canvas.width * 592.28 + top + bot
+                            position += newcanvas.height / canvas.width * 592.28
                         }
                         if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
                             let blob = pdf.output('blob')
@@ -290,6 +289,7 @@ export default {
             }
             a(841.89)
         },
+
         to_jpg() {
             this.jpgdown = true
             html2canvas(this.$refs.md, {
