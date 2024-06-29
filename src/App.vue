@@ -234,7 +234,7 @@ export default {
                     var canvas = await html2canvas(e, {
                         logging: false,
                         windowWidth: 1024,
-                        height:e.scrollHeight+top1,
+                        height:e.scrollHeight+bot1,
                     })
                     var top = top1 / canvas.width * 592.28
                     var bot = bot1 / canvas.width * 592.28
