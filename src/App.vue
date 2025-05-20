@@ -212,7 +212,7 @@ export default {
     },
 
     methods: {
-        to_pdf(margin) {
+        async to_pdf(margin) {
           // 启用进度条
           this.pdfdown = true
           // 容器和尺寸
