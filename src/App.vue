@@ -268,9 +268,20 @@ export default {
                         width: tempDiv.offsetWidth,
                         backgroundColor: "#fff"
                     });
-                    let imgData = canvas.toDataURL('image/jpeg', 1.0);
+                    // 防御：确保宽高有效
+                    if (!canvas.width || !canvas.height) {
+                        console.error('Invalid canvas size:', canvas.width, canvas.height);
+                        renderedY += h;
+                        continue;
+                    }
                     let pdfWidth = 595.28 - length * 2;
                     let pdfHeight = pdfWidth / canvas.width * canvas.height;
+                    if (isNaN(pdfHeight) || !isFinite(pdfHeight) || pdfHeight <= 0) {
+                        console.error('Invalid pdfHeight:', pdfHeight);
+                        renderedY += h;
+                        continue;
+                    }
+                    let imgData = canvas.toDataURL('image/jpeg', 1.0);
                     pdf.addImage(imgData, 'JPEG', length, 0, pdfWidth, pdfHeight);
                     if (renderedY + h < totalHeight) pdf.addPage();
                     renderedY += h;
