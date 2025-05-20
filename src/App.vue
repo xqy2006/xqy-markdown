@@ -14,7 +14,7 @@
         </button>
         <button v-if="htmldown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Processing</span><span class="AnimatedEllipsis"></span></button></td>
 
-    <td><button v-if="!pdfdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf(20)">
+    <td><button v-if="!pdfdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_pdf()">
             导出pdf
         </button>
         <button v-if="pdfdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Processing</span><span class="AnimatedEllipsis"></span></button></td>
@@ -212,79 +212,68 @@ export default {
     },
 
     methods: {
-        to_pdf(length) {
-            this.count = 0;
-            //console.log(document.querySelectorAll(".markdown-body>div>*"));
-            var height = 0;
-            this.pdfdown = true
-            var pdf = new jsPDF('', 'pt', 'a4');
-            var position = 0;
-            var a = async (leftpage) => {
-                for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
-                    this.sum = document.querySelectorAll(".markdown-body>div>*").length
-                    var e = document.querySelectorAll(".markdown-body>div>*")[i]
-                    var index = i
-                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
-                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
-                    var canvas = await html2canvas(e, {
-                        logging: false,
-                        windowWidth: 1024,
-                        height:e.scrollHeight+bot1,
-                    })
-                    var top = top1 / canvas.width * 592.28
-                    var bot = bot1 / canvas.width * 592.28
-                    var imgData = canvas.toDataURL('image/jpeg', 1.0)
-                    var img = new Image();
-                    img.src = imgData;
-                    img.onload = async () => {
-                        if (height + canvas.height <= canvas.width / 592.28 * 841.89) {
-                            height += canvas.height
-                            pdf.addImage(imgData, 'JPEG', length, position, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
-                            position += canvas.height / canvas.width * 592.28
-                        } else {
-                            var canvasHeight = canvas.height
-                            var usecanvas = 0
-                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
-                                var leftheight = canvas.width / 592.28 * 841.89 - height
-                                canvasHeight = canvasHeight - leftheight
-                                var newcanvas = document.createElement('canvas');
-                                newcanvas.width = canvas.width;
-                                newcanvas.height = leftheight;
-                                var newctx = newcanvas.getContext('2d');
-                                newctx.drawImage(img, 0, usecanvas, canvas.width, leftheight, 0, 0, canvas.width, leftheight);
-                                var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                                pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                                pdf.addPage()
-                                usecanvas += leftheight
-                                height = 0
-                                position = 0
-                                //console.log(leftheight)
-                            }
-                            var newcanvas = document.createElement('canvas');
-                            newcanvas.width = canvas.width;
-                            newcanvas.height = canvas.height - usecanvas;
-                            var newctx = newcanvas.getContext('2d');
-                            newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
-                            height += canvasHeight 
-                            var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                            pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                            position += newcanvas.height / canvas.width * 592.28
-                        }
-                        if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
-                            let blob = pdf.output('blob')
-                            blob = blob.slice(0, blob.size, 'application/octet-stream')
-                            FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf')
-                            this.pdfdown = false
-                        }
-                        this.count += 1;
-                        //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
-                    }
-
-                }
+        to_pdf() {
+          const PDF_A4_WIDTH = 595.28; // pt
+          const PDF_A4_HEIGHT = 841.89; // pt
+          const MAX_CANVAS_HEIGHT = 12000; // px, 兼容性好
+          this.count = 0;
+          this.pdfdown = true;
+          const pdf = new jsPDF('', 'pt', 'a4');
+          const content = this.$refs.md.children[0]; // .markdown-body > div
+          const actualWidth = content.offsetWidth;
+          const scale = PDF_A4_WIDTH / actualWidth;
+          const pageDomHeight = PDF_A4_HEIGHT / scale; // 每页实际 DOM 高度
+          const totalHeight = content.scrollHeight;
+          const pageCount = Math.ceil(totalHeight / pageDomHeight);
+          this.sum = pageCount;
+        
+          let renderedY = 0;
+          let pageNum = 0;
+          const that = this;
+        
+          (async () => {
+            while (renderedY < totalHeight) {
+              // 单页渲染高度
+              const renderHeight = Math.min(pageDomHeight, totalHeight - renderedY, MAX_CANVAS_HEIGHT);
+              // 创建临时容器用于渲染一页
+              const tempDiv = document.createElement('div');
+              tempDiv.style.width = actualWidth + 'px';
+              tempDiv.style.height = renderHeight + 'px';
+              tempDiv.style.overflow = 'hidden';
+              tempDiv.style.position = 'absolute';
+              tempDiv.style.left = '-9999px';
+              tempDiv.innerHTML = content.innerHTML;
+              tempDiv.scrollTop = 0;
+              document.body.appendChild(tempDiv);
+              // 用 transform 上移，精准截取本页内容
+              tempDiv.style.transform = `translateY(-${renderedY}px)`;
+              // 截图
+              const canvas = await html2canvas(tempDiv, {
+                scale: scale,
+                width: actualWidth,
+                height: renderHeight,
+                backgroundColor: "#fff"
+              });
+              const imgData = canvas.toDataURL('image/jpeg', 1.0);
+              pdf.addImage(
+                imgData,
+                'JPEG',
+                0,
+                0,
+                PDF_A4_WIDTH,
+                PDF_A4_WIDTH / canvas.width * canvas.height
+              );
+              renderedY += renderHeight;
+              pageNum++;
+              this.count = pageNum;
+              if (renderedY < totalHeight) pdf.addPage();
+              document.body.removeChild(tempDiv);
             }
-            a(841.89)
+            let blob = pdf.output('blob');
+            FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf');
+            this.pdfdown = false;
+          })();
         },
-
         to_jpg() {
             this.jpgdown = true
             html2canvas(this.$refs.md, {
