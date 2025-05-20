@@ -212,80 +212,62 @@ export default {
     },
 
     methods: {
-        to_pdf(length) {
-            this.count = 0;
-            //console.log(document.querySelectorAll(".markdown-body>div>*"));
-            var height = 0;
-            this.pdfdown = true
-            var pdf = new jsPDF('', 'pt', 'a4');
-            var position = 0;
-            var a = async (leftpage) => {
-                for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
-                    this.sum = document.querySelectorAll(".markdown-body>div>*").length
-                    var e = document.querySelectorAll(".markdown-body>div>*")[i]
-                    var index = i
-                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
-                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
-                    var canvas = await html2canvas(e, {
-                        logging: false,
-                        windowWidth: 1024,
-                        height:e.scrollHeight+bot1,
-                    })
-                    var top = top1 / canvas.width * 592.28
-                    var bot = bot1 / canvas.width * 592.28
-                    var imgData = canvas.toDataURL('image/jpeg', 1.0)
-                    var img = new Image();
-                    img.src = imgData;
-                    img.onload = async () => {
-                        if (height + canvas.height <= canvas.width / 592.28 * 841.89) {
-                            height += canvas.height
-                            pdf.addImage(imgData, 'JPEG', length, position, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
-                            position += canvas.height / canvas.width * 592.28
-                        } else {
-                            var canvasHeight = canvas.height
-                            var usecanvas = 0
-                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
-                                var leftheight = canvas.width / 592.28 * 841.89 - height
-                                canvasHeight = canvasHeight - leftheight
-                                var newcanvas = document.createElement('canvas');
-                                newcanvas.width = canvas.width;
-                                newcanvas.height = leftheight;
-                                var newctx = newcanvas.getContext('2d');
-                                newctx.drawImage(img, 0, usecanvas, canvas.width, leftheight, 0, 0, canvas.width, leftheight);
-                                var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                                pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                                pdf.addPage()
-                                usecanvas += leftheight
-                                height = 0
-                                position = 0
-                                //console.log(leftheight)
-                            }
-                            var newcanvas = document.createElement('canvas');
-                            newcanvas.width = canvas.width;
-                            newcanvas.height = canvas.height - usecanvas;
-                            var newctx = newcanvas.getContext('2d');
-                            newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
-                            height += canvasHeight 
-                            var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                            pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                            position += newcanvas.height / canvas.width * 592.28
-                        }
-                        if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
-                            let blob = pdf.output('blob')
-                            blob = blob.slice(0, blob.size, 'application/octet-stream')
-                            FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf')
-                            this.pdfdown = false
-                        }
-                        this.count += 1;
-                        //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
-                    }
-
-                }
+        to_pdf(margin) {
+          // 启用进度条
+          this.pdfdown = true
+          // 容器和尺寸
+          const container = this.$refs.md
+          const totalHeight = container.scrollHeight
+          const containerWidth = container.offsetWidth
+          // PDF 尺寸（pt）
+          const pdf = new jsPDF('', 'pt', 'a4')
+          const pdfWidthPt = 595.28
+          const pdfHeightPt = 841.89
+          // 计算每页在「像素」中的高度
+          const pxPerPt = containerWidth / pdfWidthPt
+          const pagePxHeight = pdfHeightPt * pxPerPt
+          // 总页数
+          const pageCount = Math.ceil(totalHeight / pagePxHeight)
+          this.sum = pageCount
+          this.count = 0
+    
+          for (let page = 0; page < pageCount; page++) {
+            // 计算截取区域在 Y 轴的偏移和高度
+            const clipY = page * pagePxHeight
+            const clipH = Math.min(pagePxHeight, totalHeight - clipY)
+            // 分页截取
+            const canvas = await html2canvas(container, {
+              width: containerWidth,
+              windowWidth: containerWidth,
+              scrollY: -clipY,
+              height: clipH,
+              logging: false
+            })
+            const imgData = canvas.toDataURL('image/jpeg', 1.0)
+            // 计算图片在 PDF 中的高度（pt）
+            const imgPtHeight = (canvas.height / containerWidth) * pdfWidthPt
+            if (page > 0) {
+              pdf.addPage()
             }
-            a(841.89)
-
-
-
+            pdf.addImage(
+              imgData,
+              'JPEG',
+              margin,
+              0,
+              pdfWidthPt - margin * 2,
+              imgPtHeight
+            )
+            // 更新进度
+            this.count++
+          }
+    
+          // 导出 PDF
+          const blob = pdf.output('blob')
+          FileSaver.saveAs(
+            blob.slice(0, blob.size, 'application/octet-stream'),
+            (this.filename || 'document') + '.pdf'
+          )
+          this.pdfdown = false
         },
         to_jpg() {
             this.jpgdown = true
