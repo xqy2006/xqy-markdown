@@ -212,67 +212,84 @@ export default {
     },
 
     methods: {
-        to_pdf() {
-          const PDF_A4_WIDTH = 595.28; // pt
-          const PDF_A4_HEIGHT = 841.89; // pt
-          const MAX_CANVAS_HEIGHT = 12000; // px, 兼容性好
-          this.count = 0;
-          this.pdfdown = true;
-          const pdf = new jsPDF('', 'pt', 'a4');
-          const content = this.$refs.md.children[0]; // .markdown-body > div
-          const actualWidth = content.offsetWidth;
-          const scale = PDF_A4_WIDTH / actualWidth;
-          const pageDomHeight = PDF_A4_HEIGHT / scale; // 每页实际 DOM 高度
-          const totalHeight = content.scrollHeight;
-          const pageCount = Math.ceil(totalHeight / pageDomHeight);
-          this.sum = pageCount;
+        to_pdf(length) {
+            const MAX_CANVAS_HEIGHT = 5000; // 浏览器canvas安全高度
+            this.count = 0;
+            this.pdfdown = true;
+            var pdf = new jsPDF('', 'pt', 'a4');
+            var content = this.$refs.md.children[0]; // .markdown-body > div
+            var blocks = Array.from(content.children);
+            let tempPage = [];
+            let tempHeight = 0;
+            let pageHeightPx = 841.89;
+            let that = this;
         
-          let renderedY = 0;
-          let pageNum = 0;
-          const that = this;
-        
-          (async () => {
-            while (renderedY < totalHeight) {
-              // 单页渲染高度
-              const renderHeight = Math.min(pageDomHeight, totalHeight - renderedY, MAX_CANVAS_HEIGHT);
-              // 创建临时容器用于渲染一页
-              const tempDiv = document.createElement('div');
-              tempDiv.style.width = actualWidth + 'px';
-              tempDiv.style.height = renderHeight + 'px';
-              tempDiv.style.overflow = 'hidden';
-              tempDiv.style.position = 'absolute';
-              tempDiv.style.left = '-9999px';
-              tempDiv.innerHTML = content.innerHTML;
-              tempDiv.scrollTop = 0;
-              document.body.appendChild(tempDiv);
-              // 用 transform 上移，精准截取本页内容
-              tempDiv.style.transform = `translateY(-${renderedY}px)`;
-              // 截图
-              const canvas = await html2canvas(tempDiv, {
-                scale: scale,
-                width: actualWidth,
-                height: renderHeight,
-                backgroundColor: "#fff"
-              });
-              const imgData = canvas.toDataURL('image/jpeg', 1.0);
-              pdf.addImage(
-                imgData,
-                'JPEG',
-                0,
-                0,
-                PDF_A4_WIDTH,
-                PDF_A4_WIDTH / canvas.width * canvas.height
-              );
-              renderedY += renderHeight;
-              pageNum++;
-              this.count = pageNum;
-              if (renderedY < totalHeight) pdf.addPage();
-              document.body.removeChild(tempDiv);
+            // 1. 预分页，统计总页数
+            let pages = [];
+            for (let i = 0; i < blocks.length; i++) {
+                let block = blocks[i];
+                let blockHeight = block.offsetHeight;
+                if (tempHeight + blockHeight > MAX_CANVAS_HEIGHT && tempPage.length > 0) {
+                    pages.push([...tempPage]);
+                    tempPage = [];
+                    tempHeight = 0;
+                }
+                // 超大块，单独分页
+                if (blockHeight > MAX_CANVAS_HEIGHT) {
+                    pages.push([block]);
+                    tempPage = [];
+                    tempHeight = 0;
+                } else {
+                    tempPage.push(block);
+                    tempHeight += blockHeight;
+                }
             }
-            let blob = pdf.output('blob');
-            FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf');
-            this.pdfdown = false;
-          })();
+            if (tempPage.length) pages.push([...tempPage]);
+            // 计算总页数
+            this.sum = pages.length;
+        
+            // 2. 渲染每一页
+            const renderPage = async (blocksForPage) => {
+                let tempDiv = document.createElement('div');
+                tempDiv.style.width = content.offsetWidth + 'px';
+                tempDiv.style.minHeight = pageHeightPx + 'px';
+                tempDiv.style.background = "#fff";
+                blocksForPage.forEach(b => tempDiv.appendChild(b.cloneNode(true)));
+                document.body.appendChild(tempDiv);
+                let totalHeight = tempDiv.scrollHeight;
+                let renderedY = 0;
+                while (renderedY < totalHeight) {
+                    let h = Math.min(MAX_CANVAS_HEIGHT, totalHeight - renderedY);
+                    tempDiv.scrollTop = renderedY;
+                    tempDiv.style.height = h + "px";
+                    let canvas = await html2canvas(tempDiv, {
+                        scrollY: -renderedY,
+                        height: h,
+                        width: tempDiv.offsetWidth,
+                        backgroundColor: "#fff"
+                    });
+                    let imgData = canvas.toDataURL('image/jpeg', 1.0);
+                    let pdfWidth = 595.28 - length * 2;
+                    let pdfHeight = pdfWidth / canvas.width * canvas.height;
+                    pdf.addImage(imgData, 'JPEG', length, 0, pdfWidth, pdfHeight);
+                    if (renderedY + h < totalHeight) pdf.addPage();
+                    renderedY += h;
+                    that.count++; // 每渲染一页，进度+1
+                }
+                document.body.removeChild(tempDiv);
+            };
+        
+            (async () => {
+                for (let i = 0; i < pages.length; i++) {
+                    await renderPage(pages[i]);
+                    if (i < pages.length - 1) pdf.addPage();
+                }
+                // 删除最后多余空白页
+                if (pdf.internal.getNumberOfPages() > 1) pdf.deletePage(pdf.internal.getNumberOfPages());
+                let blob = pdf.output('blob');
+                FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf');
+                this.pdfdown = false;
+            })();
         },
         to_jpg() {
             this.jpgdown = true
