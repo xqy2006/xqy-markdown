@@ -214,99 +214,133 @@ export default {
     methods: {
         to_pdf(length) {
             this.count = 0;
-            var height = 0;
             this.pdfdown = true;
-            var pdf = new jsPDF('', 'pt', 'a4');
-            var position = 0;
             
-            var a = async (leftpage) => {
+            const pdf = new jsPDF('', 'pt', 'a4');
+            const pageHeight = 841.89; // A4页面高度（pt）
+            const pageWidth = 595.28;  // A4页面宽度（pt）
+            
+            let currentHeight = 0;
+            let currentPosition = 0;
+            
+            const processElements = async () => {
                 const elements = document.querySelectorAll(".markdown-body>div>*");
                 this.sum = elements.length;
                 
                 for (let i = 0; i < elements.length; i++) {
-                    var e = elements[i];
-                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2));
-                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2));
+                    const element = elements[i];
                     
-                    var canvas = await html2canvas(e, {
+                    // 获取元素的margin
+                    const computedStyle = window.getComputedStyle(element);
+                    const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+                    const marginTop = parseFloat(computedStyle.marginTop) || 0;
+                    
+                    // 生成canvas
+                    const canvas = await html2canvas(element, {
                         logging: false,
                         windowWidth: 1024,
-                        height: e.scrollHeight + bot1,
+                        height: element.scrollHeight + marginBottom,
                         useCORS: true,
                         scale: 1
                     });
                     
-                    var imgData = canvas.toDataURL('image/jpeg', 1.0);
+                    // 计算缩放比例（canvas宽度对应PDF宽度）
+                    const scale = (pageWidth - length * 2) / canvas.width;
+                    const scaledHeight = canvas.height * scale;
                     
-                    // 同步处理，避免异步问题
-                    await this.processCanvasForPDF(canvas, imgData, pdf, length, height, position);
+                    // 处理当前元素的分页
+                    const result = await this.addElementToPDF(
+                        pdf, canvas, length, currentHeight, currentPosition, 
+                        pageHeight, pageWidth, scale
+                    );
+                    
+                    currentHeight = result.height;
+                    currentPosition = result.position;
                     
                     this.count += 1;
                 }
                 
-                // 所有元素处理完成后保存PDF
-                let blob = pdf.output('blob');
-                blob = blob.slice(0, blob.size, 'application/octet-stream');
-                FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf');
+                // 保存PDF
+                const blob = pdf.output('blob');
+                const finalBlob = blob.slice(0, blob.size, 'application/octet-stream');
+                FileSaver.saveAs(finalBlob, (this.filename || 'undefined') + '.pdf');
                 this.pdfdown = false;
             };
             
-            a(841.89);
+            processElements();
         },
         
-        // 新增方法：处理canvas到PDF的转换
-        async processCanvasForPDF(canvas, imgData, pdf, length, currentHeight, currentPosition) {
-            const pageHeight = canvas.width / 592.28 * 841.89; // A4页面高度（按比例）
-            const canvasHeight = canvas.height;
+        async addElementToPDF(pdf, canvas, leftMargin, currentHeight, currentPosition, pageHeight, pageWidth, scale) {
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const scaledHeight = canvas.height * scale;
             
-            if (currentHeight + canvasHeight <= pageHeight) {
-                // 内容可以完全放在当前页
-                pdf.addImage(imgData, 'JPEG', length, currentPosition, 595.28 - length * 2, (595.28) / canvas.width * canvasHeight);
-                currentHeight += canvasHeight;
-                currentPosition += canvasHeight / canvas.width * 592.28;
-            } else {
-                // 需要分割内容到多页
-                let remainingHeight = canvasHeight;
-                let sourceY = 0;
+            // 如果当前元素可以完全放在当前页
+            if (currentHeight + scaledHeight <= pageHeight) {
+                pdf.addImage(
+                    imgData, 'JPEG', 
+                    leftMargin, currentPosition,
+                    pageWidth - leftMargin * 2, scaledHeight
+                );
                 
-                while (remainingHeight > 0) {
-                    // 计算当前页可以容纳的高度
-                    const availableHeight = pageHeight - currentHeight;
-                    const heightToUse = Math.min(remainingHeight, availableHeight);
+                return {
+                    height: currentHeight + scaledHeight,
+                    position: currentPosition + scaledHeight
+                };
+            }
+            
+            // 需要分页处理
+            let remainingCanvasHeight = canvas.height;
+            let sourceY = 0;
+            let newHeight = currentHeight;
+            let newPosition = currentPosition;
+            
+            while (remainingCanvasHeight > 0) {
+                // 计算当前页剩余空间能容纳的canvas高度
+                const availablePageHeight = pageHeight - newHeight;
+                const maxCanvasHeight = availablePageHeight / scale;
+                const canvasHeightToUse = Math.min(remainingCanvasHeight, maxCanvasHeight);
+                
+                if (canvasHeightToUse > 0) {
+                    // 创建分割后的canvas
+                    const partialCanvas = document.createElement('canvas');
+                    partialCanvas.width = canvas.width;
+                    partialCanvas.height = Math.floor(canvasHeightToUse);
                     
-                    // 创建新的canvas片段
-                    const newCanvas = document.createElement('canvas');
-                    newCanvas.width = canvas.width;
-                    newCanvas.height = Math.floor(heightToUse); // 确保是整数像素
-                    
-                    const newCtx = newCanvas.getContext('2d');
-                    newCtx.drawImage(
-                        canvas, 
-                        0, sourceY,                    // 源起始位置
-                        canvas.width, heightToUse,     // 源宽高
-                        0, 0,                          // 目标起始位置
-                        canvas.width, heightToUse      // 目标宽高
+                    const ctx = partialCanvas.getContext('2d');
+                    ctx.drawImage(
+                        canvas,
+                        0, sourceY, canvas.width, canvasHeightToUse,
+                        0, 0, canvas.width, canvasHeightToUse
                     );
                     
-                    const newImgData = newCanvas.toDataURL('image/jpeg', 1.0);
-                    pdf.addImage(newImgData, 'JPEG', length, currentPosition, 595.28 - length * 2, (595.28) / newCanvas.width * newCanvas.height);
+                    const partialImgData = partialCanvas.toDataURL('image/jpeg', 1.0);
+                    const partialScaledHeight = canvasHeightToUse * scale;
                     
-                    // 更新位置和剩余高度
-                    sourceY += heightToUse;
-                    remainingHeight -= heightToUse;
-                    currentPosition += newCanvas.height / canvas.width * 592.28;
-                    currentHeight += heightToUse;
+                    pdf.addImage(
+                        partialImgData, 'JPEG',
+                        leftMargin, newPosition,
+                        pageWidth - leftMargin * 2, partialScaledHeight
+                    );
                     
-                    // 如果还有剩余内容，添加新页
-                    if (remainingHeight > 0) {
-                        pdf.addPage();
-                        currentHeight = 0;
-                        currentPosition = 0;
-                    }
+                    // 更新状态
+                    sourceY += canvasHeightToUse;
+                    remainingCanvasHeight -= canvasHeightToUse;
+                    newHeight += partialScaledHeight;
+                    newPosition += partialScaledHeight;
+                }
+                
+                // 如果还有剩余内容，添加新页
+                if (remainingCanvasHeight > 0) {
+                    pdf.addPage();
+                    newHeight = 0;
+                    newPosition = 0;
                 }
             }
             
-            return { height: currentHeight, position: currentPosition };
+            return {
+                height: newHeight,
+                position: newPosition
+            };
         },
         to_jpg() {
             this.jpgdown = true
