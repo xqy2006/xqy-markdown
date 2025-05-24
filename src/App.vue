@@ -23,17 +23,17 @@
         </button>
         <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
     
-    <!-- 新增：清除存储按钮 -->
-    <td><button style="margin-inline-start: 15px;" class="btn btn-danger btn-sm" @click="clearStorage()" title="清除本地存储的内容">
-            清除存储
+    <!-- 修改：清除储存 -> 清除所有内容 -->
+    <td><button style="margin-inline-start: 15px;" class="btn btn-danger btn-sm" @click="clearAllContent()" title="清除文件名和内容">
+            清除内容
         </button></td>
 </div>
 <span class="Progress" v-if="pdfdown" style="margin-top: 10px;margin-inline-start: 15px;margin-inline-end: 15px;">
   <span class="Progress-item color-bg-success-emphasis" :style="`width:`+(count/sum*100)+`%;`"></span>
 </span>
 
-<!-- 新增：存储状态提示 -->
-<div v-if="autoSaveStatus" class="flash flash-success" style="margin: 10px 15px;">
+<!-- 修改：缩小提示条高度 -->
+<div v-if="autoSaveStatus" class="flash flash-success compact-flash" style="margin: 10px 15px;">
     <span>{{ autoSaveStatus }}</span>
 </div>
 
@@ -159,6 +159,13 @@ code {
     animation: octocat-wave 560ms ease-in-out
 }
 
+/* 新增：紧凑的提示条样式 */
+.compact-flash {
+    padding: 8px 16px !important;
+    font-size: 14px;
+    line-height: 1.2;
+}
+
 @keyframes octocat-wave {
 
     0%,
@@ -214,8 +221,9 @@ export default {
             mdup: false,
             count: 0,
             sum: 1,
-            autoSaveStatus: '', // 自动保存状态提示
+            autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
+            isInitializing: true, // 新增：标记是否正在初始化
         }
     },
 
@@ -223,6 +231,13 @@ export default {
     mounted() {
         this.loadFromStorage();
         this.setupAutoSave();
+        
+        // 初始化完成后，开始监听变化
+        this.$nextTick(() => {
+            setTimeout(() => {
+                this.isInitializing = false;
+            }, 500); // 延迟500ms后开始监听变化
+        });
     },
 
     beforeUnmount() {
@@ -237,20 +252,26 @@ export default {
         // 监听 mdtext 变化，自动保存
         mdtext: {
             handler() {
-                this.debouncedSave();
+                // 只在非初始化状态下触发保存
+                if (!this.isInitializing) {
+                    this.debouncedSave();
+                }
             },
             deep: true
         },
         // 监听 filename 变化，自动保存
         filename: {
             handler() {
-                this.debouncedSave();
+                // 只在非初始化状态下触发保存
+                if (!this.isInitializing) {
+                    this.debouncedSave();
+                }
             }
         }
     },
 
     methods: {
-        // 新增：从 localStorage 加载数据
+        // 修改：从 localStorage 加载数据
         loadFromStorage() {
             try {
                 const savedData = localStorage.getItem('markdown-editor-data');
@@ -260,16 +281,15 @@ export default {
                     this.filename = data.filename || '';
                     
                     if (this.mdtext || this.filename) {
-                        this.showSaveStatus('已恢复上次编辑的内容', 'success');
+                        this.showSaveStatus('已恢复上次编辑的内容');
                     }
                 }
             } catch (error) {
                 console.warn('加载本地存储数据失败:', error);
-                this.showSaveStatus('加载历史数据失败', 'error');
             }
         },
 
-        // 新增：保存到 localStorage
+        // 修改：保存到 localStorage（不显示保存提示）
         saveToStorage() {
             try {
                 const dataToSave = {
@@ -279,14 +299,13 @@ export default {
                 };
                 
                 localStorage.setItem('markdown-editor-data', JSON.stringify(dataToSave));
-                this.showSaveStatus('已自动保存', 'success');
+                // 移除：不再显示"已自动保存"提示
             } catch (error) {
                 console.warn('保存到本地存储失败:', error);
-                this.showSaveStatus('自动保存失败', 'error');
             }
         },
 
-        // 新增：防抖保存（避免频繁保存）
+        // 修改：防抖保存（避免频繁保存）
         debouncedSave() {
             if (this.autoSaveTimer) {
                 clearTimeout(this.autoSaveTimer);
@@ -297,7 +316,7 @@ export default {
             }, 1000); // 1秒后保存
         },
 
-        // 新增：设置自动保存
+        // 设置自动保存
         setupAutoSave() {
             // 页面失去焦点时保存
             window.addEventListener('beforeunload', () => {
@@ -312,8 +331,8 @@ export default {
             });
         },
 
-        // 新增：显示保存状态
-        showSaveStatus(message, type = 'success') {
+        // 修改：显示状态提示（只用于加载提示）
+        showSaveStatus(message) {
             this.autoSaveStatus = message;
             
             // 3秒后清除状态提示
@@ -322,18 +341,12 @@ export default {
             }, 3000);
         },
 
-        // 新增：清除本地存储
-        clearStorage() {
-            if (confirm('确定要清除本地存储的所有数据吗？这将删除当前保存的文件名和内容。')) {
-                try {
-                    localStorage.removeItem('markdown-editor-data');
-                    this.mdtext = '';
-                    this.filename = '';
-                    this.showSaveStatus('本地存储已清除', 'success');
-                } catch (error) {
-                    console.warn('清除本地存储失败:', error);
-                    this.showSaveStatus('清除存储失败', 'error');
-                }
+        // 修改：清除所有内容（替换清除存储功能）
+        clearAllContent() {
+            if (confirm('确定要清除所有内容吗？这将清空文件名和Markdown内容。')) {
+                this.mdtext = '';
+                this.filename = '';
+                // 清除内容后会自动保存空内容
             }
         },
         to_pdf(length = 20) {
