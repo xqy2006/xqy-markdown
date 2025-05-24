@@ -214,78 +214,99 @@ export default {
     methods: {
         to_pdf(length) {
             this.count = 0;
-            //console.log(document.querySelectorAll(".markdown-body>div>*"));
             var height = 0;
-            this.pdfdown = true
+            this.pdfdown = true;
             var pdf = new jsPDF('', 'pt', 'a4');
             var position = 0;
+            
             var a = async (leftpage) => {
-                for (let i = 0; i < document.querySelectorAll(".markdown-body>div>*").length; i++) {
-                    this.sum = document.querySelectorAll(".markdown-body>div>*").length
-                    var e = document.querySelectorAll(".markdown-body>div>*")[i]
-                    var index = i
-                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2))
-                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2))
+                const elements = document.querySelectorAll(".markdown-body>div>*");
+                this.sum = elements.length;
+                
+                for (let i = 0; i < elements.length; i++) {
+                    var e = elements[i];
+                    var bot1 = Number(window.getComputedStyle(e, null).marginBottom.slice(0, window.getComputedStyle(e, null).marginBottom.length - 2));
+                    var top1 = Number(window.getComputedStyle(e, null).marginTop.slice(0, window.getComputedStyle(e, null).marginTop.length - 2));
+                    
                     var canvas = await html2canvas(e, {
                         logging: false,
                         windowWidth: 1024,
-                        height:e.scrollHeight+bot1,
-                    })
-                    var top = top1 / canvas.width * 592.28
-                    var bot = bot1 / canvas.width * 592.28
-                    var imgData = canvas.toDataURL('image/jpeg', 1.0)
-                    var img = new Image();
-                    img.src = imgData;
-                    img.onload = async () => {
-                        if (height + canvas.height <= canvas.width / 592.28 * 841.89) {
-                            height += canvas.height
-                            pdf.addImage(imgData, 'JPEG', length, position, 595.28 - length * 2, (595.28) / canvas.width * canvas.height)
-                            position += canvas.height / canvas.width * 592.28
-                        } else {
-                            var canvasHeight = canvas.height
-                            var usecanvas = 0
-                            while (height + canvasHeight > canvas.width / 592.28 * 841.89) {
-                                var leftheight = canvas.width / 592.28 * 841.89 - height
-                                canvasHeight = canvasHeight - leftheight
-                                var newcanvas = document.createElement('canvas');
-                                newcanvas.width = canvas.width;
-                                newcanvas.height = leftheight;
-                                var newctx = newcanvas.getContext('2d');
-                                newctx.drawImage(img, 0, usecanvas, canvas.width, leftheight, 0, 0, canvas.width, leftheight);
-                                var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                                pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                                pdf.addPage()
-                                usecanvas += leftheight
-                                height = 0
-                                position = 0
-                                //console.log(leftheight)
-                            }
-                            var newcanvas = document.createElement('canvas');
-                            newcanvas.width = canvas.width;
-                            newcanvas.height = canvas.height - usecanvas;
-                            var newctx = newcanvas.getContext('2d');
-                            newctx.drawImage(img, 0, usecanvas, canvas.width, canvas.height - usecanvas, 0, 0, canvas.width, canvas.height - usecanvas);
-                            height += canvasHeight 
-                            var newimgdata = newcanvas.toDataURL('image/jpeg', 1.0)
-                            pdf.addImage(newimgdata, 'JPEG', length, position, 595.28 - length * 2, (595.28) / newcanvas.width * newcanvas.height)
-                            position += newcanvas.height / canvas.width * 592.28
-                        }
-                        if (this.count == document.querySelectorAll(".markdown-body>div>*").length - 1) {
-                            let blob = pdf.output('blob')
-                            blob = blob.slice(0, blob.size, 'application/octet-stream')
-                            FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf')
-                            this.pdfdown = false
-                        }
-                        this.count += 1;
-                        //window.open(pdf.output("bloburl", { filename: "xqy-markdown.pdf" }));
+                        height: e.scrollHeight + bot1,
+                        useCORS: true,
+                        scale: 1
+                    });
+                    
+                    var imgData = canvas.toDataURL('image/jpeg', 1.0);
+                    
+                    // 同步处理，避免异步问题
+                    await this.processCanvasForPDF(canvas, imgData, pdf, length, height, position);
+                    
+                    this.count += 1;
+                }
+                
+                // 所有元素处理完成后保存PDF
+                let blob = pdf.output('blob');
+                blob = blob.slice(0, blob.size, 'application/octet-stream');
+                FileSaver.saveAs(blob, (this.filename || 'undefined') + '.pdf');
+                this.pdfdown = false;
+            };
+            
+            a(841.89);
+        },
+        
+        // 新增方法：处理canvas到PDF的转换
+        async processCanvasForPDF(canvas, imgData, pdf, length, currentHeight, currentPosition) {
+            const pageHeight = canvas.width / 592.28 * 841.89; // A4页面高度（按比例）
+            const canvasHeight = canvas.height;
+            
+            if (currentHeight + canvasHeight <= pageHeight) {
+                // 内容可以完全放在当前页
+                pdf.addImage(imgData, 'JPEG', length, currentPosition, 595.28 - length * 2, (595.28) / canvas.width * canvasHeight);
+                currentHeight += canvasHeight;
+                currentPosition += canvasHeight / canvas.width * 592.28;
+            } else {
+                // 需要分割内容到多页
+                let remainingHeight = canvasHeight;
+                let sourceY = 0;
+                
+                while (remainingHeight > 0) {
+                    // 计算当前页可以容纳的高度
+                    const availableHeight = pageHeight - currentHeight;
+                    const heightToUse = Math.min(remainingHeight, availableHeight);
+                    
+                    // 创建新的canvas片段
+                    const newCanvas = document.createElement('canvas');
+                    newCanvas.width = canvas.width;
+                    newCanvas.height = Math.floor(heightToUse); // 确保是整数像素
+                    
+                    const newCtx = newCanvas.getContext('2d');
+                    newCtx.drawImage(
+                        canvas, 
+                        0, sourceY,                    // 源起始位置
+                        canvas.width, heightToUse,     // 源宽高
+                        0, 0,                          // 目标起始位置
+                        canvas.width, heightToUse      // 目标宽高
+                    );
+                    
+                    const newImgData = newCanvas.toDataURL('image/jpeg', 1.0);
+                    pdf.addImage(newImgData, 'JPEG', length, currentPosition, 595.28 - length * 2, (595.28) / newCanvas.width * newCanvas.height);
+                    
+                    // 更新位置和剩余高度
+                    sourceY += heightToUse;
+                    remainingHeight -= heightToUse;
+                    currentPosition += newCanvas.height / canvas.width * 592.28;
+                    currentHeight += heightToUse;
+                    
+                    // 如果还有剩余内容，添加新页
+                    if (remainingHeight > 0) {
+                        pdf.addPage();
+                        currentHeight = 0;
+                        currentPosition = 0;
                     }
-
                 }
             }
-            a(841.89)
-
-
-
+            
+            return { height: currentHeight, position: currentPosition };
         },
         to_jpg() {
             this.jpgdown = true
