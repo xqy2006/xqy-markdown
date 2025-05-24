@@ -136,11 +136,6 @@ code {
     word-wrap: break-word !important;
 }
 
-ol li {
-    border-left: 1px solid #c5c5c5;
-    color: #6e7781;
-}
-
 #buttons {
     padding: 0px;
 }
