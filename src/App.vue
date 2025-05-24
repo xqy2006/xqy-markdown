@@ -22,11 +22,21 @@
             导出jpg
         </button>
         <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
-
+    
+    <!-- 新增：清除存储按钮 -->
+    <td><button style="margin-inline-start: 15px;" class="btn btn-danger btn-sm" @click="clearStorage()" title="清除本地存储的内容">
+            清除存储
+        </button></td>
 </div>
 <span class="Progress" v-if="pdfdown" style="margin-top: 10px;margin-inline-start: 15px;margin-inline-end: 15px;">
   <span class="Progress-item color-bg-success-emphasis" :style="`width:`+(count/sum*100)+`%;`"></span>
 </span>
+
+<!-- 新增：存储状态提示 -->
+<div v-if="autoSaveStatus" class="flash flash-success" style="margin: 10px 15px;">
+    <span>{{ autoSaveStatus }}</span>
+</div>
+
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>文件名：</b>
@@ -191,6 +201,7 @@ import mk from 'markdown-it-texmath'
 import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
+
 export default {
     data() {
         return {
@@ -202,11 +213,129 @@ export default {
             htmldown: false,
             mdup: false,
             count: 0,
-            sum:1,
+            sum: 1,
+            autoSaveStatus: '', // 自动保存状态提示
+            autoSaveTimer: null, // 自动保存定时器
+        }
+    },
+
+    // 添加生命周期钩子
+    mounted() {
+        this.loadFromStorage();
+        this.setupAutoSave();
+    },
+
+    beforeUnmount() {
+        // 组件销毁前清除定时器
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+        }
+    },
+
+    // 添加侦听器
+    watch: {
+        // 监听 mdtext 变化，自动保存
+        mdtext: {
+            handler() {
+                this.debouncedSave();
+            },
+            deep: true
+        },
+        // 监听 filename 变化，自动保存
+        filename: {
+            handler() {
+                this.debouncedSave();
+            }
         }
     },
 
     methods: {
+        // 新增：从 localStorage 加载数据
+        loadFromStorage() {
+            try {
+                const savedData = localStorage.getItem('markdown-editor-data');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    this.mdtext = data.content || '';
+                    this.filename = data.filename || '';
+                    
+                    if (this.mdtext || this.filename) {
+                        this.showSaveStatus('已恢复上次编辑的内容', 'success');
+                    }
+                }
+            } catch (error) {
+                console.warn('加载本地存储数据失败:', error);
+                this.showSaveStatus('加载历史数据失败', 'error');
+            }
+        },
+
+        // 新增：保存到 localStorage
+        saveToStorage() {
+            try {
+                const dataToSave = {
+                    content: this.mdtext,
+                    filename: this.filename,
+                    lastSaved: new Date().toISOString()
+                };
+                
+                localStorage.setItem('markdown-editor-data', JSON.stringify(dataToSave));
+                this.showSaveStatus('已自动保存', 'success');
+            } catch (error) {
+                console.warn('保存到本地存储失败:', error);
+                this.showSaveStatus('自动保存失败', 'error');
+            }
+        },
+
+        // 新增：防抖保存（避免频繁保存）
+        debouncedSave() {
+            if (this.autoSaveTimer) {
+                clearTimeout(this.autoSaveTimer);
+            }
+            
+            this.autoSaveTimer = setTimeout(() => {
+                this.saveToStorage();
+            }, 1000); // 1秒后保存
+        },
+
+        // 新增：设置自动保存
+        setupAutoSave() {
+            // 页面失去焦点时保存
+            window.addEventListener('beforeunload', () => {
+                this.saveToStorage();
+            });
+
+            // 页面可见性变化时保存
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    this.saveToStorage();
+                }
+            });
+        },
+
+        // 新增：显示保存状态
+        showSaveStatus(message, type = 'success') {
+            this.autoSaveStatus = message;
+            
+            // 3秒后清除状态提示
+            setTimeout(() => {
+                this.autoSaveStatus = '';
+            }, 3000);
+        },
+
+        // 新增：清除本地存储
+        clearStorage() {
+            if (confirm('确定要清除本地存储的所有数据吗？这将删除当前保存的文件名和内容。')) {
+                try {
+                    localStorage.removeItem('markdown-editor-data');
+                    this.mdtext = '';
+                    this.filename = '';
+                    this.showSaveStatus('本地存储已清除', 'success');
+                } catch (error) {
+                    console.warn('清除本地存储失败:', error);
+                    this.showSaveStatus('清除存储失败', 'error');
+                }
+            }
+        },
         to_pdf(length = 20) {
             this.pdfdown = true;
             this.count = 0;
