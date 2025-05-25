@@ -460,58 +460,313 @@ export default {
         this.originalStyles = null;
     },
 
+    // 全新的智能分页算法
+    getOptimalPageBreaks(contentElement, maxPageHeight, targetScale = 2) {
+        const maxCanvasSize = 16000;
+        const maxAllowedHeight = Math.floor(maxCanvasSize / targetScale);
+        
+        console.log(`智能分页开始: maxPageHeight=${maxPageHeight}, maxAllowedHeight=${maxAllowedHeight}`);
+        
+        // 如果理想页面高度就在限制内，使用标准分页
+        if (maxPageHeight <= maxAllowedHeight) {
+            console.log('理想页面高度在限制内，使用标准分页');
+            return this.getStandardPageBreaks(contentElement, maxPageHeight);
+        }
+        
+        // 使用真正的智能分页
+        console.log('使用行级智能分页算法');
+        return this.getLineBasedPageBreaks(contentElement, maxAllowedHeight);
+    },
+
+    // 标准分页（用于不需要智能分页的情况）
+    getStandardPageBreaks(contentElement, pageHeight) {
+        const totalPages = Math.ceil(contentElement.scrollHeight / pageHeight);
+        const breaks = [];
+        for (let i = 0; i <= totalPages; i++) {
+            breaks.push(Math.min(i * pageHeight, contentElement.scrollHeight));
+        }
+        return breaks;
+    },
+
+    // 基于行的智能分页
+    getLineBasedPageBreaks(contentElement, maxAllowedHeight) {
+        const breaks = [0];
+        let currentY = 0;
+        
+        // 获取所有安全的分页点
+        const safeBreakPoints = this.getAllSafeBreakPoints(contentElement);
+        console.log(`找到 ${safeBreakPoints.length} 个安全分页点`);
+        
+        for (let i = 0; i < safeBreakPoints.length; i++) {
+            const breakPoint = safeBreakPoints[i];
+            const potentialHeight = breakPoint - currentY;
+            
+            // 如果加上这个点会超出限制，先在之前找一个合适的点分页
+            if (potentialHeight > maxAllowedHeight * 0.9) {
+                // 寻找合适的分页点
+                const suitableBreakPoint = this.findSuitableBreakPoint(
+                    safeBreakPoints, currentY, currentY + maxAllowedHeight * 0.85, i
+                );
+                
+                if (suitableBreakPoint > currentY) {
+                    breaks.push(suitableBreakPoint);
+                    currentY = suitableBreakPoint;
+                    console.log(`添加分页点: ${suitableBreakPoint}, 页面高度: ${suitableBreakPoint - breaks[breaks.length - 2]}`);
+                }
+            }
+        }
+        
+        // 添加最终点
+        if (currentY < contentElement.scrollHeight) {
+            breaks.push(contentElement.scrollHeight);
+            console.log(`添加最终分页点: ${contentElement.scrollHeight}, 页面高度: ${contentElement.scrollHeight - breaks[breaks.length - 2]}`);
+        }
+        
+        return breaks;
+    },
+
+    // 获取所有安全的分页点
+    getAllSafeBreakPoints(contentElement) {
+        const breakPoints = new Set([0]);
+        
+        // 1. 添加块级元素边界
+        this.addBlockElementBreaks(contentElement, breakPoints);
+        
+        // 2. 添加文本行边界
+        this.addTextLineBreaks(contentElement, breakPoints);
+        
+        // 3. 添加代码行边界
+        this.addCodeLineBreaks(contentElement, breakPoints);
+        
+        // 4. 添加表格行边界
+        this.addTableRowBreaks(contentElement, breakPoints);
+        
+        // 转换为排序数组
+        const sortedBreaks = Array.from(breakPoints).sort((a, b) => a - b);
+        console.log(`总共收集到 ${sortedBreaks.length} 个分页点`);
+        
+        return sortedBreaks;
+    },
+
+    // 添加块级元素边界
+    addBlockElementBreaks(contentElement, breakPoints) {
+        const blockElements = contentElement.querySelectorAll(
+            'h1, h2, h3, h4, h5, h6, p, pre, blockquote, div, hr, table, ul, ol'
+        );
+        
+        blockElements.forEach(element => {
+            // 跳过嵌套在代码块中的元素
+            if (element.closest('pre.hljs') && element.tagName !== 'PRE') {
+                return;
+            }
+            
+            const rect = element.getBoundingClientRect();
+            const containerRect = contentElement.getBoundingClientRect();
+            const relativeTop = rect.top - containerRect.top + contentElement.scrollTop;
+            const relativeBottom = relativeTop + rect.height;
+            
+            breakPoints.add(Math.floor(relativeTop));
+            breakPoints.add(Math.floor(relativeBottom));
+        });
+        
+        console.log(`添加了块级元素边界，当前分页点数: ${breakPoints.size}`);
+    },
+
+    // 添加文本行边界（使用Range API检测真实的文本行）
+    addTextLineBreaks(contentElement, breakPoints) {
+        const textElements = contentElement.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+        
+        textElements.forEach(element => {
+            // 跳过代码块中的元素
+            if (element.closest('pre.hljs')) {
+                return;
+            }
+            
+            const textLines = this.getTextLines(element, contentElement);
+            textLines.forEach(lineY => {
+                breakPoints.add(Math.floor(lineY));
+            });
+        });
+        
+        console.log(`添加了文本行边界，当前分页点数: ${breakPoints.size}`);
+    },
+
+    // 获取元素中的文本行位置
+    getTextLines(element, contentElement) {
+        const lines = [];
+        const text = element.textContent;
+        
+        if (!text || text.trim().length === 0) {
+            return lines;
+        }
+        
+        try {
+            const range = document.createRange();
+            const containerRect = contentElement.getBoundingClientRect();
+            
+            // 逐字符扫描来检测换行
+            let lastTop = null;
+            let currentLineStart = 0;
+            
+            for (let i = 0; i <= text.length; i++) {
+                try {
+                    range.setStart(element.firstChild || element, Math.min(i, text.length));
+                    range.setEnd(element.firstChild || element, Math.min(i, text.length));
+                    
+                    const rect = range.getBoundingClientRect();
+                    if (rect.height === 0) continue;
+                    
+                    const currentTop = rect.top - containerRect.top + contentElement.scrollTop;
+                    
+                    if (lastTop !== null && Math.abs(currentTop - lastTop) > 5) {
+                        // 检测到换行
+                        lines.push(lastTop);
+                        currentLineStart = i;
+                    }
+                    
+                    lastTop = currentTop;
+                } catch (e) {
+                    // 忽略Range错误，继续处理
+                    continue;
+                }
+            }
+            
+            // 添加最后一行
+            if (lastTop !== null) {
+                lines.push(lastTop);
+            }
+            
+        } catch (error) {
+            console.warn('文本行检测失败:', error);
+            // 回退到元素边界
+            const rect = element.getBoundingClientRect();
+            const containerRect = contentElement.getBoundingClientRect();
+            const relativeTop = rect.top - containerRect.top + contentElement.scrollTop;
+            lines.push(relativeTop);
+        }
+        
+        return lines;
+    },
+
+    // 添加代码行边界
+    addCodeLineBreaks(contentElement, breakPoints) {
+        const codeBlocks = contentElement.querySelectorAll('pre.hljs');
+        
+        codeBlocks.forEach(codeBlock => {
+            const codeList = codeBlock.querySelector('ol');
+            if (codeList) {
+                const codeLines = codeList.querySelectorAll('li');
+                const containerRect = contentElement.getBoundingClientRect();
+                
+                codeLines.forEach(line => {
+                    const rect = line.getBoundingClientRect();
+                    const relativeTop = rect.top - containerRect.top + contentElement.scrollTop;
+                    const relativeBottom = relativeTop + rect.height;
+                    
+                    breakPoints.add(Math.floor(relativeTop));
+                    breakPoints.add(Math.floor(relativeBottom));
+                });
+            }
+        });
+        
+        console.log(`添加了代码行边界，当前分页点数: ${breakPoints.size}`);
+    },
+
+    // 添加表格行边界
+    addTableRowBreaks(contentElement, breakPoints) {
+        const tables = contentElement.querySelectorAll('table');
+        
+        tables.forEach(table => {
+            const rows = table.querySelectorAll('tr');
+            const containerRect = contentElement.getBoundingClientRect();
+            
+            rows.forEach(row => {
+                const rect = row.getBoundingClientRect();
+                const relativeTop = rect.top - containerRect.top + contentElement.scrollTop;
+                const relativeBottom = relativeTop + rect.height;
+                
+                breakPoints.add(Math.floor(relativeTop));
+                breakPoints.add(Math.floor(relativeBottom));
+            });
+        });
+        
+        console.log(`添加了表格行边界，当前分页点数: ${breakPoints.size}`);
+    },
+
+    // 寻找合适的分页点
+    findSuitableBreakPoint(breakPoints, minY, maxY, currentIndex) {
+        let bestBreakPoint = minY;
+        
+        // 从当前位置向前寻找合适的分页点
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            const breakPoint = breakPoints[i];
+            
+            if (breakPoint < minY) {
+                break;
+            }
+            
+            if (breakPoint <= maxY) {
+                bestBreakPoint = breakPoint;
+                break;
+            }
+        }
+        
+        return bestBreakPoint;
+    },
+
+    // 改进的PDF导出函数
     async to_pdf(length = 20) {
         this.pdfdown = true;
         this.count = 0;
         
         try {
-            // 设置A4宽度
+            // 设置A4宽度并等待布局稳定
             this.setA4Width();
-            
-            // 等待布局稳定
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 800)); // 增加等待时间
             
             const pdf = new jsPDF('', 'pt', 'a4');
-            const pageWidth = 595.28;  // A4宽度(pt)
-            const pageHeight = 841.89; // A4高度(pt)
+            const pageWidth = 595.28;
+            const pageHeight = 841.89;
             const margin = length;
             
             const contentElement = this.$refs.md;
-            const contentHeight = contentElement.scrollHeight;
             const contentWidth = contentElement.scrollWidth;
-            
-            // 计算参数
-            const scale = 2; // 高质量截图
             const pdfContentWidth = pageWidth - margin * 2;
-            
-            // 关键：正确的比例计算
             const widthRatio = pdfContentWidth / contentWidth;
-            const pageHeightInPixels = pageHeight / widthRatio;
+            const idealPageHeightInPixels = (pageHeight - margin * 2) / widthRatio;
             
-            // 计算总页数
-            const totalPages = Math.ceil(contentHeight / pageHeightInPixels);
-            this.sum = totalPages;
+            console.log('=== PDF导出开始 ===');
+            console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
+            console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
             
-            for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-                const startY = pageIndex * pageHeightInPixels;
-                const endY = Math.min(startY + pageHeightInPixels, contentHeight);
+            // 使用新的智能分页算法
+            const targetScale = 2;
+            const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
+            this.sum = breakPoints.length - 1;
+            
+            console.log(`智能分页完成，共${this.sum}页`);
+            console.log('分页点和页面高度:');
+            
+            for (let i = 0; i < breakPoints.length - 1; i++) {
+                const startY = breakPoints[i];
+                const endY = breakPoints[i + 1];
                 const currentPageHeight = endY - startY;
                 
-                // 检查canvas大小限制
-                const maxCanvasSize = 16000;
-                let actualScale = scale;
-                let actualWidth = contentWidth;
-                let actualHeight = currentPageHeight;
-                
-                if (contentWidth * scale > maxCanvasSize || currentPageHeight * scale > maxCanvasSize) {
-                    actualScale = Math.min(
-                        maxCanvasSize / contentWidth,
-                        maxCanvasSize / currentPageHeight
-                    );
-                    console.warn(`Canvas size too large, reducing scale to ${actualScale}`);
-                }
+                console.log(`第${i + 1}页: ${startY} - ${endY} (高度: ${currentPageHeight})`);
                 
                 try {
+                    // 检查是否超出canvas限制
+                    const maxCanvasSize = 16000;
+                    let actualScale = targetScale;
+                    
+                    if (contentWidth * targetScale > maxCanvasSize || currentPageHeight * targetScale > maxCanvasSize) {
+                        actualScale = Math.min(
+                            maxCanvasSize / contentWidth,
+                            maxCanvasSize / currentPageHeight
+                        ) * 0.95; // 留一点余量
+                        console.log(`第${i + 1}页缩放调整: ${targetScale} -> ${actualScale}`);
+                    }
+                    
                     const canvas = await html2canvas(contentElement, {
                         logging: false,
                         scale: actualScale,
@@ -525,44 +780,41 @@ export default {
                     });
                     
                     const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                    
-                    // 重要：保持正确的宽高比
                     const pdfImageWidth = pdfContentWidth;
                     const pdfImageHeight = (canvas.height / canvas.width) * pdfImageWidth;
                     
-                    if (pageIndex > 0) {
+                    if (i > 0) {
                         pdf.addPage();
                     }
                     
                     pdf.addImage(
                         imgData, 'JPEG',
-                        margin, 0,
-                        pdfImageWidth, Math.min(pdfImageHeight, pageHeight)
+                        margin, margin,
+                        pdfImageWidth, Math.min(pdfImageHeight, pageHeight - margin * 2)
                     );
                     
-                    this.count = pageIndex + 1;
+                    this.count = i + 1;
+                    console.log(`第${i + 1}页渲染成功，实际scale: ${actualScale}`);
                     
                 } catch (error) {
-                    console.error(`Error rendering page ${pageIndex + 1}:`, error);
+                    console.error(`渲染第${i + 1}页失败:`, error);
                     
-                    // 降级处理：更小的片段
-                    if (currentPageHeight * actualScale > maxCanvasSize) {
-                        await this.renderOversizedPage(
-                            contentElement, startY, currentPageHeight,
-                            pdf, margin, pdfContentWidth, pageIndex > 0,
-                            contentWidth
-                        );
+                    // 如果渲染失败，添加错误页面
+                    if (i > 0) {
+                        pdf.addPage();
                     }
+                    pdf.setFontSize(12);
+                    pdf.text(`第${i + 1}页渲染失败: ${error.message}`, margin, margin + 20);
                 }
             }
             
-            // 保存PDF
             const blob = pdf.output('blob');
             const finalBlob = blob.slice(0, blob.size, 'application/octet-stream');
             FileSaver.saveAs(finalBlob, (this.filename || 'undefined') + '.pdf');
             
+            console.log('=== PDF导出完成 ===');
+            
         } finally {
-            // 确保恢复原始宽度
             this.restoreOriginalWidth();
             this.pdfdown = false;
         }
