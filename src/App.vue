@@ -39,8 +39,14 @@
 
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
-        <b>文件名：</b>
-        <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" aria-label="导出文件名" />
+        <b>导出设置：</b>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+            <label>文件名：</label>
+            <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" style="flex: 1;" />
+            <label>缩放倍率：</label>
+            <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" value="1.0" style="width: 80px;" />
+            <small class="text-gray">(1.0 = 标准A4宽度)</small>
+        </div>
     </div>
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
