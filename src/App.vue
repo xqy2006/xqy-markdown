@@ -41,11 +41,15 @@
     <div class="Box-header">
         <b>导出设置：</b>
         <div class="export-settings">
-            <label>文件名：</label>
-            <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" style="flex: 1;" />
-            <label>缩放倍率：</label>
-            <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" value="1.0" style="width: 80px;" />
-            <small class="text-gray">(1.0 = 标准A4宽度)</small>
+            <div class="setting-group">
+                <label>文件名：</label>
+                <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" style="flex: 1;" />
+            </div>
+            <div class="setting-group">
+                <label>缩放倍率：</label>
+                <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" value="1.0" style="width: 80px;" />
+                <small class="text-gray">(1.0 = 标准A4宽度)</small>
+            </div>
         </div>
     </div>
     <div class="Box-row" id="buttons">
@@ -184,34 +188,50 @@ code {
     margin-top: 5px;
 }
 
-/* 移动端导出设置布局：分两行显示 */
-.export-settings {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-}
-
-.export-settings > div {
+.setting-group {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-.export-settings label {
-    min-width: 80px;
-    flex-shrink: 0;
-}
+@media (max-width:500px) {
+    .github-corner:hover .octo-arm {
+        animation: none
+    }
 
-.export-settings input[type="text"] {
-    flex: 1;
-}
+    .github-corner .octo-arm {
+        animation: octocat-wave 560ms ease-in-out
+    }
 
-.export-settings input[type="number"] {
-    width: 60px !important;
-}
+    /* 移动端导出设置布局：分两行显示 */
+    .export-settings {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
 
-.export-settings small {
-    font-size: 12px;
+    .setting-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .setting-group label {
+        min-width: 80px;
+        flex-shrink: 0;
+    }
+
+    .setting-group input[type="text"] {
+        flex: 1;
+    }
+
+    .setting-group input[type="number"] {
+        width: 60px !important;
+    }
+
+    .setting-group small {
+        font-size: 12px;
+    }
 }
 
 @keyframes octocat-wave {
