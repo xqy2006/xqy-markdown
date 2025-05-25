@@ -40,7 +40,7 @@
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>导出设置：</b>
-        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+        <div class="export-settings">
             <label>文件名：</label>
             <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" style="flex: 1;" />
             <label>缩放倍率：</label>
@@ -170,6 +170,44 @@ code {
     padding: 8px 16px !important;
     font-size: 14px;
     line-height: 1.2;
+}
+
+/* 导出设置布局样式 */
+.export-settings {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 5px;
+}
+
+/* 移动端导出设置布局：分两行显示 */
+.export-settings {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.export-settings > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-settings label {
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.export-settings input[type="text"] {
+    flex: 1;
+}
+
+.export-settings input[type="number"] {
+    width: 60px !important;
+}
+
+.export-settings small {
+    font-size: 12px;
 }
 
 @keyframes octocat-wave {
