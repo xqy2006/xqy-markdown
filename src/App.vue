@@ -467,63 +467,86 @@ export default {
         
         console.log(`智能分页开始: maxPageHeight=${maxPageHeight}, maxAllowedHeight=${maxAllowedHeight}`);
         
-        // 如果理想页面高度就在限制内，使用标准分页
-        if (maxPageHeight <= maxAllowedHeight) {
-            console.log('理想页面高度在限制内，使用标准分页');
-            return this.getStandardPageBreaks(contentElement, maxPageHeight);
+        // 核心修复：优先使用理想页面高度，而不是canvas限制高度
+        const targetPageHeight = Math.min(maxPageHeight, maxAllowedHeight);
+        
+        // 如果理想页面高度远小于canvas限制，直接使用理想高度进行智能分页
+        if (maxPageHeight <= maxAllowedHeight * 0.5) {
+            console.log('使用理想页面高度进行智能分页');
+            return this.getSmartPageBreaks(contentElement, maxPageHeight);
         }
         
-        // 使用真正的智能分页
-        console.log('使用行级智能分页算法');
-        return this.getLineBasedPageBreaks(contentElement, maxAllowedHeight);
+        // 如果理想页面高度接近或超出canvas限制，才使用canvas限制高度
+        console.log('使用canvas限制高度进行智能分页');
+        return this.getSmartPageBreaks(contentElement, targetPageHeight);
     },
 
-    // 标准分页（用于不需要智能分页的情况）
-    getStandardPageBreaks(contentElement, pageHeight) {
-        const totalPages = Math.ceil(contentElement.scrollHeight / pageHeight);
-        const breaks = [];
-        for (let i = 0; i <= totalPages; i++) {
-            breaks.push(Math.min(i * pageHeight, contentElement.scrollHeight));
-        }
-        return breaks;
-    },
-
-    // 基于行的智能分页
-    getLineBasedPageBreaks(contentElement, maxAllowedHeight) {
+    // 新的智能分页方法 - 基于正确的页面高度
+    getSmartPageBreaks(contentElement, targetPageHeight) {
         const breaks = [0];
         let currentY = 0;
         
         // 获取所有安全的分页点
         const safeBreakPoints = this.getAllSafeBreakPoints(contentElement);
-        console.log(`找到 ${safeBreakPoints.length} 个安全分页点`);
+        console.log(`找到 ${safeBreakPoints.length} 个安全分页点，目标页面高度: ${targetPageHeight}`);
         
-        for (let i = 0; i < safeBreakPoints.length; i++) {
-            const breakPoint = safeBreakPoints[i];
-            const potentialHeight = breakPoint - currentY;
+        while (currentY < contentElement.scrollHeight) {
+            const idealNextY = currentY + targetPageHeight;
             
-            // 如果加上这个点会超出限制，先在之前找一个合适的点分页
-            if (potentialHeight > maxAllowedHeight * 0.9) {
-                // 寻找合适的分页点
-                const suitableBreakPoint = this.findSuitableBreakPoint(
-                    safeBreakPoints, currentY, currentY + maxAllowedHeight * 0.85, i
-                );
-                
-                if (suitableBreakPoint > currentY) {
-                    breaks.push(suitableBreakPoint);
-                    currentY = suitableBreakPoint;
-                    console.log(`添加分页点: ${suitableBreakPoint}, 页面高度: ${suitableBreakPoint - breaks[breaks.length - 2]}`);
-                }
+            // 如果剩余内容不足一页，直接结束
+            if (idealNextY >= contentElement.scrollHeight) {
+                breaks.push(contentElement.scrollHeight);
+                break;
+            }
+            
+            // 在理想位置附近寻找最佳分页点
+            const searchRange = targetPageHeight * 0.15; // 允许15%的偏差
+            const bestBreakPoint = this.findBestBreakPointInRange(
+                safeBreakPoints, 
+                idealNextY - searchRange, 
+                idealNextY + searchRange,
+                currentY
+            );
+            
+            if (bestBreakPoint > currentY) {
+                breaks.push(bestBreakPoint);
+                currentY = bestBreakPoint;
+                console.log(`添加分页点: ${bestBreakPoint}, 页面高度: ${bestBreakPoint - breaks[breaks.length - 2]}`);
+            } else {
+                // 如果找不到合适的分页点，使用理想位置
+                breaks.push(idealNextY);
+                currentY = idealNextY;
+                console.log(`使用理想分页点: ${idealNextY}, 页面高度: ${targetPageHeight}`);
             }
         }
         
-        // 添加最终点
-        if (currentY < contentElement.scrollHeight) {
-            breaks.push(contentElement.scrollHeight);
-            console.log(`添加最终分页点: ${contentElement.scrollHeight}, 页面高度: ${contentElement.scrollHeight - breaks[breaks.length - 2]}`);
-        }
-        
+        console.log(`智能分页完成，总页数: ${breaks.length - 1}`);
         return breaks;
     },
+    findBestBreakPointInRange(breakPoints, minY, maxY, currentY) {
+        let bestPoint = -1;
+        let bestScore = -1;
+        
+        for (const point of breakPoints) {
+            if (point <= currentY || point < minY || point > maxY) {
+                continue;
+            }
+            
+            // 评分系统：越接近理想位置得分越高
+            const idealY = (minY + maxY) / 2;
+            const distance = Math.abs(point - idealY);
+            const maxDistance = Math.abs(maxY - minY) / 2;
+            const score = 1 - (distance / maxDistance);
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestPoint = point;
+            }
+        }
+        
+        return bestPoint;
+    },
+    
 
     // 获取所有安全的分页点
     getAllSafeBreakPoints(contentElement) {
@@ -722,7 +745,7 @@ export default {
         try {
             // 设置A4宽度并等待布局稳定
             this.setA4Width();
-            await new Promise(resolve => setTimeout(resolve, 800)); // 增加等待时间
+            await new Promise(resolve => setTimeout(resolve, 800));
             
             const pdf = new jsPDF('', 'pt', 'a4');
             const pageWidth = 595.28;
@@ -739,14 +762,33 @@ export default {
             console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
             console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
             
-            // 使用新的智能分页算法
+            // 使用修复后的智能分页算法
             const targetScale = 2;
             const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
             this.sum = breakPoints.length - 1;
             
-            console.log(`智能分页完成，共${this.sum}页`);
-            console.log('分页点和页面高度:');
+            // 预先计算所有页面的最安全缩放比例
+            const maxCanvasSize = 16000;
+            let globalScale = targetScale;
             
+            for (let i = 0; i < breakPoints.length - 1; i++) {
+                const currentPageHeight = breakPoints[i + 1] - breakPoints[i];
+                
+                // 检查每页的canvas限制
+                const maxScaleForWidth = maxCanvasSize / contentWidth;
+                const maxScaleForHeight = maxCanvasSize / currentPageHeight;
+                const maxSafeScale = Math.min(maxScaleForWidth, maxScaleForHeight) * 0.95;
+                
+                if (maxSafeScale < globalScale) {
+                    globalScale = maxSafeScale;
+                    console.log(`调整全局缩放比例为: ${globalScale} (因第${i + 1}页高度: ${currentPageHeight})`);
+                }
+            }
+            
+            console.log(`最终使用全局缩放比例: ${globalScale}`);
+            console.log(`智能分页完成，共${this.sum}页`);
+            
+            // 渲染每一页
             for (let i = 0; i < breakPoints.length - 1; i++) {
                 const startY = breakPoints[i];
                 const endY = breakPoints[i + 1];
@@ -755,21 +797,9 @@ export default {
                 console.log(`第${i + 1}页: ${startY} - ${endY} (高度: ${currentPageHeight})`);
                 
                 try {
-                    // 检查是否超出canvas限制
-                    const maxCanvasSize = 16000;
-                    let actualScale = targetScale;
-                    
-                    if (contentWidth * targetScale > maxCanvasSize || currentPageHeight * targetScale > maxCanvasSize) {
-                        actualScale = Math.min(
-                            maxCanvasSize / contentWidth,
-                            maxCanvasSize / currentPageHeight
-                        ) * 0.95; // 留一点余量
-                        console.log(`第${i + 1}页缩放调整: ${targetScale} -> ${actualScale}`);
-                    }
-                    
                     const canvas = await html2canvas(contentElement, {
                         logging: false,
-                        scale: actualScale,
+                        scale: globalScale,
                         width: contentWidth,
                         height: currentPageHeight,
                         x: 0,
@@ -787,19 +817,22 @@ export default {
                         pdf.addPage();
                     }
                     
+                    // 确保图像完全适配PDF页面
+                    const maxPdfImageHeight = pageHeight - margin * 2;
+                    const finalImageHeight = Math.min(pdfImageHeight, maxPdfImageHeight);
+                    
                     pdf.addImage(
                         imgData, 'JPEG',
                         margin, margin,
-                        pdfImageWidth, Math.min(pdfImageHeight, pageHeight - margin * 2)
+                        pdfImageWidth, finalImageHeight
                     );
                     
                     this.count = i + 1;
-                    console.log(`第${i + 1}页渲染成功，实际scale: ${actualScale}`);
+                    console.log(`第${i + 1}页渲染成功，实际高度: ${finalImageHeight}px`);
                     
                 } catch (error) {
                     console.error(`渲染第${i + 1}页失败:`, error);
                     
-                    // 如果渲染失败，添加错误页面
                     if (i > 0) {
                         pdf.addPage();
                     }
