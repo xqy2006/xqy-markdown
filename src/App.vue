@@ -916,7 +916,7 @@ export default {
                 });
                 
                 const blob = canvas.toDataURL('image/png', 1.0);
-                FileSaver.saveAs(blob, (this.filename || 'undefined') + '.jpg');
+                FileSaver.saveAs(blob, (this.filename || 'undefined') + '.png');
                 
             } finally {
                 this.restoreOriginalWidth();
