@@ -1115,6 +1115,7 @@ export default {
                     var enter = 2
                 }
             }
+            
             //const oldloc = this.$refs.input.selectionEnd
             //const list = this.mdtext.split("\n")
             //console.log(list[list.length - 1].search('# ') != -1)
