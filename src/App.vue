@@ -854,7 +854,7 @@ export default {
                             backgroundColor: '#ffffff'
                         });
                         
-                        const imgData = canvas.toDataURL('image/png', 1.0);
+                        const imgData = canvas.toDataURL('image/jpeg', 1.0);
                         const pdfImageWidth = pdfContentWidth;
                         const pdfImageHeight = (canvas.height / canvas.width) * pdfImageWidth;
                         
@@ -867,7 +867,7 @@ export default {
                         const finalImageHeight = Math.min(pdfImageHeight, maxPdfImageHeight);
                         
                         pdf.addImage(
-                            imgData, 'PNG',
+                            imgData, 'JPEG',
                             margin, margin,
                             pdfImageWidth, finalImageHeight
                         );
