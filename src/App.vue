@@ -18,10 +18,10 @@
             导出pdf
         </button>
         <button v-if="pdfdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Processing</span><span class="AnimatedEllipsis"></span></button></td>
-    <td><button v-if="!jpgdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_jpg()">
-            导出jpg
+    <td><button v-if="!pngdown" :disabled="mdtext==''" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" @click="to_png()">
+            导出png
         </button>
-        <button v-if="jpgdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
+        <button v-if="pngdown" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Loading</span><span class="AnimatedEllipsis"></span></button></td>
     
     <!-- 修改：清除储存 -> 清除所有内容 -->
     <td><button style="margin-inline-start: 15px;" class="btn btn-danger btn-sm" @click="clearAllContent()" title="清除文件名和内容">
@@ -303,7 +303,7 @@ export default {
             mdtext: '',
             filename: '',
             pdfdown: false,
-            jpgdown: false,
+            pngdown: false,
             mddown: false,
             htmldown: false,
             mdup: false,
@@ -808,12 +808,12 @@ export default {
                 console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
                 
                 // 使用修复后的智能分页算法
-                const targetScale = 2;
+                const targetScale = 2.5;
                 const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
                 this.sum = breakPoints.length - 1;
                 
                 // 预先计算所有页面的最安全缩放比例
-                const maxCanvasSize = 16000;
+                const maxCanvasSize = 17000;
                 let globalScale = targetScale;
                 
                 for (let i = 0; i < breakPoints.length - 1; i++) {
@@ -854,7 +854,7 @@ export default {
                             backgroundColor: '#ffffff'
                         });
                         
-                        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                        const imgData = canvas.toDataURL('image/png', 1.0);
                         const pdfImageWidth = pdfContentWidth;
                         const pdfImageHeight = (canvas.height / canvas.width) * pdfImageWidth;
                         
@@ -867,7 +867,7 @@ export default {
                         const finalImageHeight = Math.min(pdfImageHeight, maxPdfImageHeight);
                         
                         pdf.addImage(
-                            imgData, 'JPEG',
+                            imgData, 'PNG',
                             margin, margin,
                             pdfImageWidth, finalImageHeight
                         );
@@ -898,8 +898,8 @@ export default {
             }
         },
 
-        async to_jpg() {
-            this.jpgdown = true;
+        async to_png() {
+            this.pngdown = true;
             
             try {
                 // 设置A4宽度
@@ -909,18 +909,18 @@ export default {
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
                 const canvas = await html2canvas(this.$refs.exportContent, {
-                    scale: 2,
+                    scale: 2.5,
                     useCORS: true,
                     allowTaint: true,
                     backgroundColor: '#ffffff'
                 });
                 
-                const blob = canvas.toDataURL('image/jpeg', 0.95);
+                const blob = canvas.toDataURL('image/png', 1.0);
                 FileSaver.saveAs(blob, (this.filename || 'undefined') + '.jpg');
                 
             } finally {
                 this.restoreOriginalWidth();
-                this.jpgdown = false;
+                this.pngdown = false;
             }
         },
 
