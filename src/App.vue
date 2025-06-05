@@ -47,7 +47,7 @@
             </div>
             <div class="setting-group">
                 <label>缩放倍率：</label>
-                <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" value="1.0" style="width: 80px;" />
+                <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" style="width: 80px;" />
                 <small class="text-gray">(1.0 = 标准A4宽度)</small>
             </div>
         </div>
@@ -1031,7 +1031,7 @@ export default {
                 enabled: true
             }).use(emoji).use(toc).use(footnote).use(mk, {
                 engine: katex,
-                delimiters: 'dollars',
+                delimiters: ['dollars','beg_end', 'brackets', 'gitlab'],
                 katexOptions: {
                     macros: {
                         "\\RR": "\\mathbb{R}"
