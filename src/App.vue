@@ -871,7 +871,7 @@ export default {
             }
         },
 
-        // 智能矢量PDF导出 - 使用HTML到SVG转换保持文本可选择
+        // 智能矢量PDF导出 - 使用真正的文本绘制保持文本可选择
         async to_pdf_svg(length = 20) {
             this.pdfdown = true;
             this.count = 0;
@@ -883,8 +883,8 @@ export default {
                 this.setA4Width();
                 await new Promise(resolve => setTimeout(resolve, 800));
 
-                // 使用pdf-lib替代jsPDF，支持真正的SVG嵌入
-                const { PDFDocument, rgb } = PDFLib;
+                // 使用pdf-lib进行真正的矢量化文本绘制
+                const { PDFDocument, rgb, StandardFonts } = PDFLib;
                 const pdfDoc = await PDFDocument.create();
                 
                 const pageWidth = 595.28;
@@ -906,7 +906,13 @@ export default {
 
                 console.log('智能矢量模式页面分隔点:', breakPoints);
 
-                // 逐页处理，使用HTML到SVG转换
+                // 嵌入字体
+                const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+                const monoFont = await pdfDoc.embedFont(StandardFonts.Courier);
+
+                // 逐页处理，使用真正的文本绘制
                 for (let i = 0; i < breakPoints.length - 1; i++) {
                     this.count = i + 1;
                     
@@ -923,50 +929,22 @@ export default {
                         continue;
                     }
 
-                    // 创建SVG而不是canvas
-                    const svgData = await this.createPageSVG(contentElement, start, pageHeightPx);
+                    // 提取页面内容并转换为可绘制的文本元素
+                    const pageElements = await this.extractPageElements(contentElement, start, pageHeightPx);
                     
-                    try {
-                        // 使用pdf-lib嵌入SVG，保持矢量特性和文本可选择性
-                        const svgImage = await pdfDoc.embedSvg(svgData);
-                        
-                        // 计算适合的尺寸
-                        const svgDims = svgImage.scale(widthRatio);
-                        const maxHeight = pageHeight - margin * 2;
-                        const scaledHeight = Math.min(svgDims.height, maxHeight);
-                        const scaledWidth = (scaledHeight / svgDims.height) * svgDims.width;
-                        
-                        page.drawSvg(svgImage, {
-                            x: margin,
-                            y: pageHeight - margin - scaledHeight,
-                            width: scaledWidth,
-                            height: scaledHeight,
-                        });
-                        
-                        console.log(`页面 ${i + 1} SVG嵌入成功，尺寸: ${scaledWidth}x${scaledHeight}`);
-                        
-                    } catch (svgError) {
-                        console.warn(`SVG嵌入失败，回退到Canvas模式:`, svgError);
-                        
-                        // 回退策略：使用Canvas渲染
-                        const canvas = await this.createPageCanvas(contentElement, start, pageHeightPx);
-                        const canvasImageData = canvas.toDataURL('image/jpeg', 0.95);
-                        const jpegImage = await pdfDoc.embedJpg(canvasImageData);
-                        
-                        const jpegDims = jpegImage.scale(widthRatio);
-                        const maxHeight = pageHeight - margin * 2;
-                        const scaledHeight = Math.min(jpegDims.height, maxHeight);
-                        const scaledWidth = (scaledHeight / jpegDims.height) * jpegDims.width;
-                        
-                        page.drawImage(jpegImage, {
-                            x: margin,
-                            y: pageHeight - margin - scaledHeight,
-                            width: scaledWidth,
-                            height: scaledHeight,
-                        });
-                    }
+                    // 绘制元素到PDF页面
+                    await this.renderElementsToPDF(page, pageElements, {
+                        regularFont,
+                        boldFont,
+                        italicFont,
+                        monoFont,
+                        widthRatio,
+                        margin,
+                        pageHeight,
+                        startOffset: start
+                    });
 
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
 
                 // 保存PDF
@@ -995,15 +973,9 @@ export default {
             }
         },
 
-        // 创建页面SVG - 真正的矢量化导出，保持文本可选择
-        async createPageSVG(contentElement, offsetTop, height) {
-            console.log(`创建页面SVG: offsetTop=${offsetTop}, height=${height}`);
-            
-            // 确保内容元素存在且有内容
-            if (!contentElement || !contentElement.children.length) {
-                console.error('内容元素为空或不存在');
-                throw new Error('内容元素为空，无法生成PDF');
-            }
+        // 提取页面元素用于真正的矢量化渲染
+        async extractPageElements(contentElement, offsetTop, height) {
+            console.log(`提取页面元素: offsetTop=${offsetTop}, height=${height}`);
             
             // 创建临时容器以隔离页面内容
             const pageContainer = document.createElement('div');
@@ -1014,14 +986,6 @@ export default {
             pageContainer.style.height = height + 'px';
             pageContainer.style.overflow = 'hidden';
             pageContainer.style.backgroundColor = '#ffffff';
-            pageContainer.style.boxSizing = 'border-box';
-            
-            // 复制重要的CSS类和样式
-            pageContainer.className = contentElement.className;
-            pageContainer.style.fontFamily = getComputedStyle(contentElement).fontFamily;
-            pageContainer.style.fontSize = getComputedStyle(contentElement).fontSize;
-            pageContainer.style.lineHeight = getComputedStyle(contentElement).lineHeight;
-            pageContainer.style.color = getComputedStyle(contentElement).color;
             
             document.body.appendChild(pageContainer);
 
@@ -1033,20 +997,66 @@ export default {
             clonedContent.style.margin = '0';
             clonedContent.style.padding = getComputedStyle(contentElement).padding;
             
-            // 清理可能导致SVG问题的样式
-            this.cleanupElementStyles(clonedContent);
-            
             pageContainer.appendChild(clonedContent);
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            // 等待DOM更新和样式应用
-            await new Promise(resolve => setTimeout(resolve, 500));
-
+            const elements = [];
+            
             try {
-                // 生成SVG
-                const svgString = this.convertElementToSVG(pageContainer);
-                return svgString;
+                // 遍历所有可见元素并提取其样式和内容
+                const walker = document.createTreeWalker(
+                    pageContainer,
+                    NodeFilter.SHOW_ELEMENT,
+                    null,
+                    false
+                );
+
+                const processedElements = [pageContainer];
+                let node;
+                while (node = walker.nextNode()) {
+                    processedElements.push(node);
+                }
+
+                processedElements.forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    const containerRect = pageContainer.getBoundingClientRect();
+                    
+                    // 跳过不可见或无内容的元素
+                    if (rect.width === 0 || rect.height === 0) return;
+                    
+                    const relativeTop = rect.top - containerRect.top;
+                    const relativeLeft = rect.left - containerRect.left;
+                    
+                    // 只处理在页面范围内的元素
+                    if (relativeTop >= 0 && relativeTop < height) {
+                        const style = getComputedStyle(el);
+                        const textContent = el.textContent?.trim();
+                        
+                        if (textContent && el.children.length === 0) { // 只处理叶子文本节点
+                            elements.push({
+                                type: this.getElementType(el),
+                                text: textContent,
+                                x: relativeLeft,
+                                y: relativeTop,
+                                width: rect.width,
+                                height: rect.height,
+                                fontSize: parseFloat(style.fontSize) || 14,
+                                fontWeight: style.fontWeight,
+                                fontStyle: style.fontStyle,
+                                color: style.color,
+                                backgroundColor: style.backgroundColor,
+                                textDecoration: style.textDecoration,
+                                fontFamily: style.fontFamily,
+                                lineHeight: parseFloat(style.lineHeight) || rect.height,
+                                tagName: el.tagName.toLowerCase()
+                            });
+                        }
+                    }
+                });
+
+                return elements.sort((a, b) => a.y - b.y);
+                
             } finally {
-                // 清理临时容器
                 try {
                     document.body.removeChild(pageContainer);
                 } catch (e) {
@@ -1055,150 +1065,165 @@ export default {
             }
         },
 
-        // 清理可能导致SVG问题的样式
-        cleanupElementStyles(element) {
-            // 递归处理所有元素
-            const walker = document.createTreeWalker(
-                element,
-                NodeFilter.SHOW_ELEMENT,
-                null,
-                false
-            );
-
-            const elementsToClean = [element];
-            let node;
-            while (node = walker.nextNode()) {
-                elementsToClean.push(node);
+        // 确定元素类型
+        getElementType(element) {
+            const tagName = element.tagName.toLowerCase();
+            
+            if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+                return 'heading';
+            } else if (tagName === 'code' && !element.closest('pre')) {
+                return 'inline-code';
+            } else if (element.closest('pre')) {
+                return 'code-block';
+            } else if (element.closest('.katex')) {
+                return 'math';
+            } else if (['strong', 'b'].includes(tagName)) {
+                return 'bold';
+            } else if (['em', 'i'].includes(tagName)) {
+                return 'italic';
+            } else {
+                return 'text';
             }
+        },
 
-            elementsToClean.forEach(el => {
-                const style = getComputedStyle(el);
-                
-                // 移除问题样式：异常偏移
-                if (style.inset && style.inset.includes('9875px')) {
-                    el.style.inset = 'auto';
+        // 将元素渲染到PDF页面
+        async renderElementsToPDF(page, elements, options) {
+            const { regularFont, boldFont, italicFont, monoFont, widthRatio, margin, pageHeight, startOffset } = options;
+            
+            console.log(`渲染 ${elements.length} 个元素到PDF页面`);
+            
+            for (const element of elements) {
+                try {
+                    // 选择合适的字体
+                    let font = regularFont;
+                    if (element.type === 'code-block' || element.type === 'inline-code') {
+                        font = monoFont;
+                    } else if (element.fontWeight === 'bold' || element.fontWeight === '700' || element.type === 'bold' || element.type === 'heading') {
+                        font = boldFont;
+                    } else if (element.fontStyle === 'italic' || element.type === 'italic') {
+                        font = italicFont;
+                    }
+
+                    // 调整字体大小和位置
+                    const fontSize = Math.max(8, element.fontSize * widthRatio * 0.75);
+                    const x = margin + element.x * widthRatio;
+                    const y = pageHeight - margin - (element.y + element.fontSize) * widthRatio;
+                    
+                    // 解析颜色
+                    const color = this.parseColor(element.color);
+                    
+                    // 绘制背景（适用于内联代码）
+                    if (element.type === 'inline-code' || element.type === 'code-block') {
+                        const bgColor = rgb(0.97, 0.98, 0.99); // 浅灰色背景
+                        const padding = 3;
+                        
+                        page.drawRectangle({
+                            x: x - padding,
+                            y: y - padding,
+                            width: element.width * widthRatio + padding * 2,
+                            height: element.height * widthRatio + padding * 2,
+                            color: bgColor,
+                        });
+                    }
+                    
+                    // 绘制文本
+                    const textLines = this.wrapText(element.text, font, fontSize, element.width * widthRatio);
+                    let currentY = y;
+                    
+                    for (const line of textLines) {
+                        if (currentY < margin) break; // 防止超出页面底部
+                        
+                        page.drawText(line, {
+                            x: x,
+                            y: currentY,
+                            size: fontSize,
+                            font: font,
+                            color: color,
+                        });
+                        
+                        currentY -= fontSize * 1.2; // 行间距
+                    }
+                    
+                } catch (elementError) {
+                    console.warn('渲染元素失败:', elementError, element);
                 }
-                
-                if (style.left && (style.left.includes('9999px') || style.left.includes('9875px'))) {
-                    el.style.left = 'auto';
+            }
+        },
+
+        // 解析CSS颜色到pdf-lib rgb格式
+        parseColor(colorString) {
+            const { rgb } = PDFLib;
+            
+            if (!colorString || colorString === 'initial' || colorString === 'inherit') {
+                return rgb(0, 0, 0); // 默认黑色
+            }
+            
+            // 处理rgb/rgba格式
+            const rgbMatch = colorString.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgbMatch) {
+                const r = parseInt(rgbMatch[1]) / 255;
+                const g = parseInt(rgbMatch[2]) / 255;
+                const b = parseInt(rgbMatch[3]) / 255;
+                return rgb(r, g, b);
+            }
+            
+            // 处理十六进制格式
+            const hexMatch = colorString.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
+            if (hexMatch) {
+                let hex = hexMatch[1];
+                if (hex.length === 3) {
+                    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
                 }
+                const r = parseInt(hex.substr(0, 2), 16) / 255;
+                const g = parseInt(hex.substr(2, 2), 16) / 255;
+                const b = parseInt(hex.substr(4, 2), 16) / 255;
+                return rgb(r, g, b);
+            }
+            
+            // 处理命名颜色
+            const colorMap = {
+                'black': rgb(0, 0, 0),
+                'white': rgb(1, 1, 1),
+                'red': rgb(1, 0, 0),
+                'green': rgb(0, 0.5, 0),
+                'blue': rgb(0, 0, 1),
+                'gray': rgb(0.5, 0.5, 0.5),
+                'grey': rgb(0.5, 0.5, 0.5),
+            };
+            
+            return colorMap[colorString.toLowerCase()] || rgb(0, 0, 0);
+        },
+
+        // 文本换行处理
+        wrapText(text, font, fontSize, maxWidth) {
+            if (!text) return [''];
+            
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const testWidth = font.widthOfTextAtSize(testLine, fontSize);
                 
-                if (style.right && (style.right.includes('9999px') || style.right.includes('9875px'))) {
-                    el.style.right = 'auto';
-                }
-                
-                // 替换 overflow: hidden 为 visible 以防止内容被裁剪
-                if (style.overflow === 'hidden') {
-                    el.style.overflow = 'visible';
-                }
-                
-                // 确保定位不会导致内容被移出视图
-                if (style.position === 'absolute' || style.position === 'fixed') {
-                    const rect = el.getBoundingClientRect();
-                    if (rect.left < -1000 || rect.top < -1000) {
-                        el.style.position = 'static';
+                if (testWidth <= maxWidth) {
+                    currentLine = testLine;
+                } else {
+                    if (currentLine) {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    } else {
+                        // 单词太长，强制换行
+                        lines.push(word);
                     }
                 }
-            });
-        },
-
-        // 将HTML元素转换为SVG
-        convertElementToSVG(element) {
-            const rect = element.getBoundingClientRect();
-            const width = element.offsetWidth;
-            const height = element.offsetHeight;
-            
-            // 创建SVG字符串
-            const svgContent = this.extractElementHTML(element);
-            
-            const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-  <foreignObject width="100%" height="100%" x="0" y="0">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="
-      width: 100%;
-      height: 100%;
-      background: white;
-      font-family: Arial, 'Microsoft YaHei', SimHei, sans-serif;
-      padding: 20px;
-      box-sizing: border-box;
-    ">
-      ${svgContent}
-    </div>
-  </foreignObject>
-</svg>`;
-
-            console.log('生成的SVG长度:', svgString.length);
-            return svgString;
-        },
-
-        // 提取元素的HTML内容并应用样式
-        extractElementHTML(element) {
-            // 创建一个干净的HTML副本
-            const clone = element.cloneNode(true);
-            
-            // 内联关键样式到元素中
-            this.inlineStyles(clone);
-            
-            return clone.innerHTML;
-        },
-
-        // 内联样式到元素
-        inlineStyles(element) {
-            const walker = document.createTreeWalker(
-                element,
-                NodeFilter.SHOW_ELEMENT,
-                null,
-                false
-            );
-
-            const elements = [element];
-            let node;
-            while (node = walker.nextNode()) {
-                elements.push(node);
             }
-
-            elements.forEach(el => {
-                const computedStyle = getComputedStyle(el);
-                
-                // 基础样式
-                const importantStyles = [
-                    'color', 'background-color', 'font-family', 'font-size', 
-                    'font-weight', 'font-style', 'text-decoration', 'margin', 
-                    'padding', 'border', 'border-radius', 'line-height'
-                ];
-                
-                let inlineStyle = '';
-                importantStyles.forEach(prop => {
-                    const value = computedStyle.getPropertyValue(prop);
-                    if (value && value !== 'initial' && value !== 'normal') {
-                        inlineStyle += `${prop}: ${value}; `;
-                    }
-                });
-                
-                // 特殊处理代码块
-                if (el.tagName === 'PRE' || el.classList.contains('hljs')) {
-                    inlineStyle += `
-                        background-color: #f6f8fa !important;
-                        border: 1px solid #d0d7de !important;
-                        border-radius: 6px !important;
-                        padding: 16px !important;
-                        font-family: monospace !important;
-                    `;
-                }
-                
-                // 特殊处理内联代码
-                if (el.tagName === 'CODE' && !el.closest('pre')) {
-                    inlineStyle += `
-                        background: rgba(175,184,193,0.2) !important;
-                        border-radius: 6px !important;
-                        padding: 0.2em 0.4em !important;
-                        font-family: monospace !important;
-                    `;
-                }
-                
-                if (inlineStyle) {
-                    el.style.cssText = inlineStyle;
-                }
-            });
+            
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            return lines.length > 0 ? lines : [''];
         },
 
         // Canvas回退方法 - 当SVG嵌入失败时使用
