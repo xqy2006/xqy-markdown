@@ -153,6 +153,14 @@ export default {
     },
 
     handleKeydown(event) {
+      // Handle real-time markdown syntax conversion (Typora-like behavior)
+      if (event.key === ' ' || event.key === 'Enter') {
+        const converted = this.detectAndConvertMarkdown(event);
+        if (converted) {
+          return; // Conversion handled, no need to continue
+        }
+      }
+
       // Handle special key combinations
       if (event.key === 'Enter') {
         // Handle enter key for list items and other special cases
@@ -307,11 +315,17 @@ export default {
       const selection = window.getSelection();
       if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
+        
+        // Enhanced caret position saving with fallback strategies
         this.lastCaretPosition = {
           startContainer: range.startContainer,
           startOffset: range.startOffset,
           endContainer: range.endContainer,
-          endOffset: range.endOffset
+          endOffset: range.endOffset,
+          // Add additional context for better restoration
+          textContent: range.startContainer.textContent,
+          containerIndex: this.getNodeIndex(range.startContainer),
+          parentElement: range.startContainer.parentElement
         };
       }
     },
@@ -320,17 +334,96 @@ export default {
       if (this.lastCaretPosition && this.$refs.editor) {
         try {
           const range = document.createRange();
-          range.setStart(this.lastCaretPosition.startContainer, this.lastCaretPosition.startOffset);
-          range.setEnd(this.lastCaretPosition.endContainer, this.lastCaretPosition.endOffset);
+          
+          // Try to restore using the saved containers
+          if (this.isValidNode(this.lastCaretPosition.startContainer) &&
+              this.isValidNode(this.lastCaretPosition.endContainer)) {
+            range.setStart(this.lastCaretPosition.startContainer, this.lastCaretPosition.startOffset);
+            range.setEnd(this.lastCaretPosition.endContainer, this.lastCaretPosition.endOffset);
+          } else {
+            // Fallback: find similar position using context
+            const newPosition = this.findSimilarPosition();
+            if (newPosition) {
+              range.setStart(newPosition.container, newPosition.offset);
+              range.collapse(true);
+            } else {
+              // Last fallback: position at end of editor
+              range.selectNodeContents(this.$refs.editor);
+              range.collapse(false);
+            }
+          }
           
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
         } catch (error) {
-          // If we can't restore the exact position, just focus the editor
+          console.warn('Failed to restore caret position:', error);
+          // Fallback: just focus the editor
           this.$refs.editor.focus();
+          // Position at end
+          const range = document.createRange();
+          range.selectNodeContents(this.$refs.editor);
+          range.collapse(false);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
       }
+    },
+
+    isValidNode(node) {
+      // Check if a node is still valid in the DOM
+      return node && 
+             node.parentNode && 
+             this.$refs.editor.contains(node);
+    },
+
+    getNodeIndex(node) {
+      // Get the index of a node among its siblings
+      if (!node || !node.parentNode) return -1;
+      return Array.from(node.parentNode.childNodes).indexOf(node);
+    },
+
+    findSimilarPosition() {
+      // Try to find a similar position based on saved context
+      if (!this.lastCaretPosition) return null;
+      
+      try {
+        const savedText = this.lastCaretPosition.textContent;
+        const savedOffset = this.lastCaretPosition.startOffset;
+        
+        // Walk through text nodes to find one with similar content
+        const walker = document.createTreeWalker(
+          this.$refs.editor,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
+        
+        let node;
+        while (node = walker.nextNode()) {
+          if (node.textContent === savedText) {
+            const offset = Math.min(savedOffset, node.textContent.length);
+            return { container: node, offset };
+          }
+        }
+        
+        // If exact match not found, try to find parent element
+        if (this.lastCaretPosition.parentElement && 
+            this.$refs.editor.contains(this.lastCaretPosition.parentElement)) {
+          const element = this.lastCaretPosition.parentElement;
+          if (element.firstChild) {
+            return { 
+              container: element.firstChild, 
+              offset: Math.min(this.lastCaretPosition.startOffset, element.firstChild.textContent?.length || 0)
+            };
+          }
+        }
+      } catch (error) {
+        console.warn('Error finding similar position:', error);
+      }
+      
+      return null;
     },
 
     focus() {
@@ -342,10 +435,207 @@ export default {
     },
 
     insertMarkdown(markdownText) {
-      // Insert markdown text at current cursor position
-      this.insertTextAtCursor(markdownText);
+      // Enhanced markdown insertion with proper cursor positioning
+      const selection = window.getSelection();
+      if (!selection.rangeCount) {
+        this.$refs.editor.focus();
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      
+      // Check if we're inserting paired delimiters (like ** for bold)
+      const pairedDelimiters = ['**', '*', '`', '~~'];
+      const isPaired = pairedDelimiters.some(delimiter => markdownText === delimiter + delimiter);
+      
+      if (isPaired) {
+        // For paired delimiters, place cursor in the middle
+        const delimiter = markdownText.substring(0, markdownText.length / 2);
+        
+        // Check if there's selected text
+        if (!range.collapsed) {
+          // Wrap selected text
+          const selectedText = range.toString();
+          range.deleteContents();
+          
+          const wrappedText = delimiter + selectedText + delimiter;
+          const textNode = document.createTextNode(wrappedText);
+          range.insertNode(textNode);
+          
+          // Position cursor after the wrapped text
+          const newRange = document.createRange();
+          newRange.setStartAfter(textNode);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } else {
+          // No selected text, insert delimiters and position cursor between them
+          const leftDelimiter = document.createTextNode(delimiter);
+          const rightDelimiter = document.createTextNode(delimiter);
+          
+          range.insertNode(leftDelimiter);
+          range.insertNode(rightDelimiter);
+          
+          // Position cursor between the delimiters
+          const newRange = document.createRange();
+          newRange.setStart(rightDelimiter, 0);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+      } else {
+        // Regular text insertion
+        const textNode = document.createTextNode(markdownText);
+        range.deleteContents();
+        range.insertNode(textNode);
+        
+        // Position cursor after inserted text
+        const newRange = document.createRange();
+        newRange.setStartAfter(textNode);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
       
       // Trigger input event to update the content
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    detectAndConvertMarkdown(event) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return false;
+
+      const range = selection.getRangeAt(0);
+      const container = range.startContainer;
+      
+      // Only process text nodes
+      if (container.nodeType !== Node.TEXT_NODE) return false;
+
+      const textContent = container.textContent;
+      const caretPosition = range.startOffset;
+      
+      // Get the text before the cursor on the current line
+      const lineStart = this.findLineStart(textContent, caretPosition);
+      const textBeforeCursor = textContent.substring(lineStart, caretPosition);
+      
+      // Check for various markdown patterns
+      const patterns = [
+        // Bold: **text**
+        {
+          regex: /\*\*([^*]+)\*\*$/,
+          replacement: (match, content) => `<strong>${content}</strong>`,
+          cursorOffset: 0
+        },
+        // Italic: *text*
+        {
+          regex: /\*([^*]+)\*$/,
+          replacement: (match, content) => `<em>${content}</em>`,
+          cursorOffset: 0
+        },
+        // Inline code: `code`
+        {
+          regex: /`([^`]+)`$/,
+          replacement: (match, content) => `<code>${content}</code>`,
+          cursorOffset: 0
+        },
+        // Strikethrough: ~~text~~
+        {
+          regex: /~~([^~]+)~~$/,
+          replacement: (match, content) => `<del>${content}</del>`,
+          cursorOffset: 0
+        },
+        // Headers: # text, ## text, etc.
+        {
+          regex: /^(#{1,6})\s+(.+)$/,
+          replacement: (match, hashes, content) => {
+            const level = hashes.length;
+            return `<h${level}>${content}</h${level}>`;
+          },
+          cursorOffset: 0,
+          wholeLine: true
+        }
+      ];
+
+      for (const pattern of patterns) {
+        const match = textBeforeCursor.match(pattern.regex);
+        if (match) {
+          event.preventDefault();
+          this.performMarkdownConversion(
+            container, 
+            lineStart, 
+            caretPosition, 
+            match, 
+            pattern,
+            textContent
+          );
+          return true;
+        }
+      }
+
+      return false;
+    },
+
+    findLineStart(text, position) {
+      // Find the start of the current line
+      const lineBreak = text.lastIndexOf('\n', position - 1);
+      return lineBreak === -1 ? 0 : lineBreak + 1;
+    },
+
+    performMarkdownConversion(container, lineStart, caretPosition, match, pattern, textContent) {
+      const replacement = pattern.replacement(...match);
+      
+      if (pattern.wholeLine) {
+        // Replace the entire line for headers
+        const lineEnd = textContent.indexOf('\n', caretPosition);
+        const actualLineEnd = lineEnd === -1 ? textContent.length : lineEnd;
+        
+        // Create a temporary container for the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = replacement;
+        const newElement = tempDiv.firstChild;
+        
+        // Replace the text content
+        const range = document.createRange();
+        range.setStart(container, lineStart);
+        range.setEnd(container, actualLineEnd);
+        range.deleteContents();
+        range.insertNode(newElement);
+        
+        // Position cursor at the end of the new element
+        const newRange = document.createRange();
+        newRange.setStartAfter(newElement);
+        newRange.collapse(true);
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } else {
+        // Replace inline patterns
+        const matchStart = caretPosition - match[0].length;
+        
+        // Create HTML element from replacement
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = replacement;
+        const newElement = tempDiv.firstChild;
+        
+        // Replace the matched text
+        const range = document.createRange();
+        range.setStart(container, matchStart);
+        range.setEnd(container, caretPosition);
+        range.deleteContents();
+        range.insertNode(newElement);
+        
+        // Position cursor after the new element
+        const newRange = document.createRange();
+        newRange.setStartAfter(newElement);
+        newRange.collapse(true);
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      
+      // Trigger input event to update the model
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     }
   }
