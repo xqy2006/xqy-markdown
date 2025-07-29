@@ -66,6 +66,12 @@
             <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
             <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()">显示Tex工具箱</button></td>
             <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()">隐藏Tex工具箱</button></td>
+            <td><button 
+                class="btn btn-sm" 
+                :class="isWysiwygMode ? 'btn-primary' : 'btn-invisible'" 
+                @click="toggleEditMode()">
+                {{ isWysiwygMode ? 'WYSIWYG模式' : '切换到WYSIWYG' }}
+            </button></td>
         </span>
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
             <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
@@ -97,8 +103,15 @@
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
-        <div>
+        <div v-if="!isWysiwygMode">
             <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
+        </div>
+        <div v-else style="margin-top: 5px;">
+            <WysiwygEditor 
+                v-model="mdtext" 
+                :get-markdown-renderer="getMarkdownRenderer"
+                ref="wysiwygEditor"
+            />
         </div>
     </div>
 </div>
@@ -296,8 +309,12 @@ import mk from 'markdown-it-texmath'
 import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
+import WysiwygEditor from './components/WysiwygEditor.vue'
 
 export default {
+    components: {
+        WysiwygEditor
+    },
     data() {
         return {
             mdtext: '',
@@ -315,10 +332,14 @@ export default {
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
+            isWysiwygMode: false, // 新增：标记是否为WYSIWYG模式
+            markdownRenderer: null, // 新增：缓存markdown渲染器
         }
     },
     created(){
         window.get_filename = this.get_filename;
+        // Initialize markdown renderer
+        this.initializeMarkdownRenderer();
     },
     // 添加生命周期钩子
     mounted() {
@@ -364,6 +385,63 @@ export default {
     },
 
     methods: {
+        initializeMarkdownRenderer() {
+            this.markdownRenderer = MarkdownIt({
+                html: true,
+                linkify: true,
+                breaks: true,
+                highlight: function (str, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        let lines = hljs.highlight(str, {
+                            language: lang
+                        }).value.split('\n')
+                        let result = ''
+                        lines.pop()
+                        lines.forEach(line => {
+                            result += `<li style="margin-top: 0;margin-inline-start: 15px;"><span style="color: #24292f;">${line}</span></li>`
+                        })
+                        return `<pre class="hljs"><code><ol>${result}</ol></code></pre>`
+                    } else {
+                        let lines = hljs.highlight(str, {
+                            language: 'Plaintext'
+                        }).value.split('\n')
+                        let result = ''
+                        lines.pop()
+                        lines.forEach(line => {
+                            result += `<li style="margin-top: 0;margin-inline-start: 15px;"><span style="color: #24292f;">${line}</span></li>`
+                        })
+                        return `<pre class="hljs"><code><ol>${result}</ol></code></pre>`;
+                    }
+                }
+            }).use(taskLists, {
+                enabled: true
+            }).use(emoji).use(toc).use(footnote).use(mk, {
+                engine: katex,
+                delimiters: ['dollars','beg_end', 'brackets', 'gitlab'],
+                katexOptions: {
+                    macros: {
+                        "\\RR": "\\mathbb{R}"
+                    }
+                }
+            });
+        },
+        
+        getMarkdownRenderer() {
+            return (mds) => this.markdownRenderer.render(mds);
+        },
+
+        toggleEditMode() {
+            this.isWysiwygMode = !this.isWysiwygMode;
+            
+            // Focus the appropriate editor after mode switch
+            this.$nextTick(() => {
+                if (this.isWysiwygMode) {
+                    this.$refs.wysiwygEditor?.focus();
+                } else {
+                    this.$refs.input?.focus();
+                }
+            });
+        },
         get_filename(){
             return this.filename
         },
@@ -1042,6 +1120,11 @@ export default {
             return content
         },
         add1(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1 + str1);
+                return;
+            }
+            
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
@@ -1052,6 +1135,11 @@ export default {
             })
         },
         add2(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1);
+                return;
+            }
+            
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
@@ -1070,6 +1158,11 @@ export default {
             })
         },
         add3(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown('\n' + str1 + '\n');
+                return;
+            }
+            
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
@@ -1083,6 +1176,11 @@ export default {
             })
         },
         add4(str1, str2) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1 + str2);
+                return;
+            }
+            
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
@@ -1099,6 +1197,11 @@ export default {
             this.tex = false
         },
         title() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown('# ');
+                return;
+            }
+            
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
@@ -1116,27 +1219,6 @@ export default {
                 }
             }
             
-            //const oldloc = this.$refs.input.selectionEnd
-            //const list = this.mdtext.split("\n")
-            //console.log(list[list.length - 1].search('# ') != -1)
-            //var text = ''
-            //if (list[list.length - 1].slice(0, 1) == '#') {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    if (list[list.length - 1].search('###### ') != -1) {
-            //        this.mdtext = text + '#' + list[list.length - 1].slice(6)
-            //    } else {
-            //        this.mdtext = text + '#' + list[list.length - 1]
-            //    }
-            //   var enter = 0
-            //} else {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    this.mdtext = text + '# ' + list[list.length - 1]
-            //    var enter = 1
-            //}
             this.$refs.input.focus();
             this.$nextTick(() => {
                 this.$refs.input.selectionStart = oldlocs + enter
