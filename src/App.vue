@@ -53,10 +53,10 @@
             <div class="setting-group">
                 <label>PDF导出模式：</label>
                 <select v-model="pdfExportMode" class="form-control input-sm" style="width: 120px;">
-                    <option value="vector">矢量化</option>
+                    <option value="vector">纯文本</option>
                     <option value="screenshot">截图</option>
                 </select>
-                <small class="text-gray">(矢量化：文本可选，清晰度高)</small>
+                <small class="text-gray">(纯文本：可选择复制，文件小)</small>
             </div>
         </div>
     </div>
@@ -351,7 +351,6 @@ code {
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
-import html2pdf from 'html2pdf.js';
 import jsPDF from 'jspdf';
 import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
@@ -859,214 +858,253 @@ export default {
             return bestBreakPoint;
         },
 
-        // 新增：矢量化PDF导出方法
+        // 真正的矢量化PDF导出方法 - 使用jsPDF直接生成可选择文本
         async to_pdf_vector() {
             this.pdfdown = true;
             this.count = 0;
             this.sum = 1;
             
             try {
-                // 设置A4宽度并等待布局稳定
-                this.setA4Width();
-                await new Promise(resolve => setTimeout(resolve, 800));
+                console.log('=== 真正矢量化PDF导出开始 ===');
                 
-                const contentElement = this.$refs.exportContent;
-                const filename = (this.filename || 'undefined') + '.pdf';
+                const pdf = new jsPDF('p', 'pt', 'a4');
+                const pageWidth = 595.28;
+                const pageHeight = 841.89;
+                const margin = 40;
+                const contentWidth = pageWidth - margin * 2;
                 
-                console.log('=== 矢量化PDF导出开始 ===');
+                // 设置字体
+                pdf.setFont('helvetica');
                 
-                // 预处理内容以确保样式正确
-                await this.preprocessContentForPDF(contentElement);
+                // 解析markdown内容为结构化数据
+                const markdownContent = this.parseMarkdownForPDF(this.mdtext);
                 
-                // 配置html2pdf选项
-                const options = {
-                    margin: 20,
-                    filename: filename,
-                    image: { type: 'jpeg', quality: 1.0 },
-                    html2canvas: { 
-                        scale: this.exportScale * 2.0, // 提高缩放比例以获得更好质量
-                        useCORS: true,
-                        allowTaint: true,
-                        backgroundColor: '#ffffff',
-                        logging: false,
-                        // 改进的canvas配置以更好地处理样式
-                        foreignObjectRendering: true,
-                        letterRendering: true
-                    },
-                    jsPDF: { 
-                        unit: 'pt', 
-                        format: 'a4', 
-                        orientation: 'portrait',
-                        compress: true
-                    },
-                    pagebreak: { 
-                        mode: ['avoid-all', 'css', 'legacy'],
-                        before: ['.page-break-before'],
-                        after: ['.page-break-after'],
-                        avoid: ['pre', 'blockquote', 'table', '.hljs']
+                let currentY = margin;
+                let currentPage = 1;
+                
+                for (let i = 0; i < markdownContent.length; i++) {
+                    const element = markdownContent[i];
+                    
+                    // 检查是否需要新页面
+                    const estimatedHeight = this.estimateElementHeight(element, contentWidth);
+                    if (currentY + estimatedHeight > pageHeight - margin && currentPage > 1) {
+                        pdf.addPage();
+                        currentY = margin;
+                        currentPage++;
                     }
-                };
+                    
+                    // 渲染元素
+                    currentY = this.renderElementToPDF(pdf, element, margin, currentY, contentWidth);
+                    
+                    // 更新进度
+                    this.count = (i + 1) / markdownContent.length;
+                }
                 
-                // 使用html2pdf进行矢量化导出
-                await html2pdf()
-                    .from(contentElement)
-                    .set(options)
-                    .outputPdf('dataurlstring')
-                    .then((pdfAsString) => {
-                        this.count = 1;
-                        // 创建下载链接
-                        const link = document.createElement('a');
-                        link.href = pdfAsString;
-                        link.download = filename;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        console.log('矢量化PDF导出完成');
-                    });
+                // 下载PDF
+                const filename = (this.filename || 'undefined') + '.pdf';
+                pdf.save(filename);
+                
+                console.log('=== 真正矢量化PDF导出完成 ===');
                 
             } catch (error) {
                 console.error('矢量化PDF导出失败:', error);
                 alert('矢量化PDF导出失败: ' + error.message);
             } finally {
-                // 清理预处理的样式
-                this.cleanupPDFPreprocessing(this.$refs.exportContent);
-                this.restoreOriginalWidth();
                 this.pdfdown = false;
             }
         },
 
-        // 新增：为PDF导出预处理内容
-        async preprocessContentForPDF(contentElement) {
-            console.log('开始预处理内容...');
+        // 解析Markdown内容为PDF结构化数据
+        parseMarkdownForPDF(markdownText) {
+            const lines = markdownText.split('\n');
+            const elements = [];
+            let currentCodeBlock = null;
+            let currentList = null;
             
-            // 1. 内联化代码元素的背景样式
-            this.inlineCodeStyles(contentElement);
-            
-            // 2. 处理数学公式
-            await this.processMathElements(contentElement);
-            
-            // 3. 优化代码块样式
-            this.optimizeCodeBlocks(contentElement);
-            
-            console.log('内容预处理完成');
-        },
-
-        // 内联化代码样式
-        inlineCodeStyles(contentElement) {
-            // 处理内联代码
-            const inlineCodes = contentElement.querySelectorAll('code:not(pre code)');
-            inlineCodes.forEach(code => {
-                code.style.backgroundColor = 'rgba(175, 184, 193, 0.2)';
-                code.style.color = 'rgb(36, 41, 47)';
-                code.style.padding = '0.2em 0.4em';
-                code.style.borderRadius = '6px';
-                code.style.fontSize = '85%';
-                code.style.fontFamily = 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace';
-                // 添加标记以便后续清理
-                code.setAttribute('data-pdf-styled', 'true');
-            });
-            
-            console.log(`已内联化 ${inlineCodes.length} 个内联代码元素的样式`);
-        },
-
-        // 处理数学公式元素
-        async processMathElements(contentElement) {
-            const mathElements = contentElement.querySelectorAll('.katex');
-            console.log(`发现 ${mathElements.length} 个数学公式元素`);
-            
-            mathElements.forEach((katexElement, index) => {
-                try {
-                    // 为KaTeX元素添加明确的样式确保渲染
-                    katexElement.style.fontFamily = 'KaTeX_Main, "Times New Roman", serif';
-                    katexElement.style.display = katexElement.classList.contains('katex-display') ? 'block' : 'inline-block';
-                    katexElement.style.textAlign = katexElement.classList.contains('katex-display') ? 'center' : 'left';
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmedLine = line.trim();
+                
+                // 处理代码块
+                if (trimmedLine.startsWith('```')) {
+                    if (currentCodeBlock) {
+                        // 结束代码块
+                        elements.push(currentCodeBlock);
+                        currentCodeBlock = null;
+                    } else {
+                        // 开始代码块
+                        const language = trimmedLine.substring(3).trim();
+                        currentCodeBlock = {
+                            type: 'codeblock',
+                            language: language,
+                            content: []
+                        };
+                    }
+                    continue;
+                }
+                
+                if (currentCodeBlock) {
+                    currentCodeBlock.content.push(line);
+                    continue;
+                }
+                
+                // 处理标题
+                if (trimmedLine.startsWith('#')) {
+                    const level = (trimmedLine.match(/^#+/) || [''])[0].length;
+                    const text = trimmedLine.substring(level).trim();
+                    elements.push({
+                        type: 'heading',
+                        level: level,
+                        text: text
+                    });
+                    continue;
+                }
+                
+                // 处理列表
+                if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ') || /^\d+\.\s/.test(trimmedLine)) {
+                    const isOrdered = /^\d+\.\s/.test(trimmedLine);
+                    const text = trimmedLine.replace(/^(-\s|\*\s|\d+\.\s)/, '');
                     
-                    // 确保数学公式元素在PDF中可见
-                    katexElement.style.visibility = 'visible';
-                    katexElement.style.opacity = '1';
-                    
-                    // 添加边距改善显示
-                    if (katexElement.classList.contains('katex-display')) {
-                        katexElement.style.margin = '1em 0';
+                    if (!currentList || currentList.ordered !== isOrdered) {
+                        if (currentList) {
+                            elements.push(currentList);
+                        }
+                        currentList = {
+                            type: 'list',
+                            ordered: isOrdered,
+                            items: []
+                        };
                     }
                     
-                    // 标记已处理
-                    katexElement.setAttribute('data-pdf-math-processed', 'true');
-                    
-                    console.log(`已处理数学公式 ${index + 1}`);
-                } catch (error) {
-                    console.warn(`处理数学公式 ${index + 1} 时出错:`, error);
+                    currentList.items.push(text);
+                    continue;
+                } else if (currentList) {
+                    elements.push(currentList);
+                    currentList = null;
                 }
-            });
+                
+                // 处理空行
+                if (trimmedLine === '') {
+                    if (elements.length > 0 && elements[elements.length - 1].type !== 'break') {
+                        elements.push({ type: 'break' });
+                    }
+                    continue;
+                }
+                
+                // 处理普通段落
+                elements.push({
+                    type: 'paragraph',
+                    text: line
+                });
+            }
+            
+            // 处理未结束的元素
+            if (currentCodeBlock) {
+                elements.push(currentCodeBlock);
+            }
+            if (currentList) {
+                elements.push(currentList);
+            }
+            
+            return elements;
         },
 
-        // 优化代码块样式
-        optimizeCodeBlocks(contentElement) {
-            const codeBlocks = contentElement.querySelectorAll('pre.hljs');
-            console.log(`发现 ${codeBlocks.length} 个代码块`);
+        // 估算元素高度
+        estimateElementHeight(element, contentWidth) {
+            switch (element.type) {
+                case 'heading':
+                    return 30 + element.level * 5; // 标题高度
+                case 'paragraph':
+                    const lines = Math.ceil(element.text.length / 80); // 估算行数
+                    return lines * 18; // 行高
+                case 'codeblock':
+                    return element.content.length * 16 + 20; // 代码行数 * 行高 + 边距
+                case 'list':
+                    return element.items.length * 20; // 列表项数 * 行高
+                case 'break':
+                    return 10;
+                default:
+                    return 20;
+            }
+        },
+        
+        // 渲染元素到PDF
+        renderElementToPDF(pdf, element, leftMargin, currentY, contentWidth) {
+            const lineHeight = 18;
             
-            codeBlocks.forEach((codeBlock, index) => {
-                // 确保代码块有正确的背景色
-                codeBlock.style.backgroundColor = '#f6f8fa';
-                codeBlock.style.border = '1px solid #d0d7de';
-                codeBlock.style.borderRadius = '6px';
-                codeBlock.style.padding = '16px';
-                codeBlock.style.overflow = 'auto';
-                codeBlock.style.fontSize = '14px';
-                codeBlock.style.lineHeight = '1.45';
-                
-                // 处理代码块内的列表项
-                const listItems = codeBlock.querySelectorAll('li');
-                listItems.forEach(li => {
-                    li.style.marginTop = '0';
-                    li.style.marginLeft = '15px';
-                    li.style.listStyleType = 'decimal';
-                    li.style.color = '#24292f';
-                });
-                
-                // 确保代码块正确对齐
-                codeBlock.style.marginLeft = '0';
-                codeBlock.style.marginRight = '0';
-                codeBlock.style.textAlign = 'left';
-                
-                // 标记已处理
-                codeBlock.setAttribute('data-pdf-code-styled', 'true');
-                
-                console.log(`已优化代码块 ${index + 1}`);
-            });
+            switch (element.type) {
+                case 'heading':
+                    const fontSize = Math.max(16, 24 - element.level * 2);
+                    pdf.setFontSize(fontSize);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.text(element.text, leftMargin, currentY + fontSize);
+                    return currentY + fontSize + 10;
+                    
+                case 'paragraph':
+                    pdf.setFontSize(12);
+                    pdf.setFont('helvetica', 'normal');
+                    
+                    // 处理内联代码和数学公式
+                    const processedText = this.processInlineElements(element.text);
+                    const lines = pdf.splitTextToSize(processedText, contentWidth);
+                    
+                    pdf.text(lines, leftMargin, currentY + 12);
+                    return currentY + lines.length * lineHeight + 5;
+                    
+                case 'codeblock':
+                    pdf.setFontSize(10);
+                    pdf.setFont('courier', 'normal');
+                    
+                    // 添加代码块背景（简化版）
+                    const codeHeight = element.content.length * 14 + 16;
+                    pdf.setFillColor(246, 248, 250);
+                    pdf.rect(leftMargin, currentY, contentWidth, codeHeight, 'F');
+                    
+                    // 添加代码内容
+                    let codeY = currentY + 14;
+                    for (const codeLine of element.content) {
+                        pdf.text(codeLine, leftMargin + 8, codeY);
+                        codeY += 14;
+                    }
+                    
+                    return currentY + codeHeight + 10;
+                    
+                case 'list':
+                    pdf.setFontSize(12);
+                    pdf.setFont('helvetica', 'normal');
+                    
+                    let listY = currentY;
+                    for (let i = 0; i < element.items.length; i++) {
+                        const bullet = element.ordered ? `${i + 1}.` : '•';
+                        pdf.text(bullet, leftMargin, listY + 12);
+                        
+                        const itemLines = pdf.splitTextToSize(element.items[i], contentWidth - 20);
+                        pdf.text(itemLines, leftMargin + 20, listY + 12);
+                        listY += itemLines.length * lineHeight;
+                    }
+                    
+                    return listY + 5;
+                    
+                case 'break':
+                    return currentY + 10;
+                    
+                default:
+                    return currentY;
+            }
+        },
+        
+        // 处理内联元素（代码、数学公式等）
+        processInlineElements(text) {
+            // 简化处理：移除markdown语法标记
+            return text
+                .replace(/`([^`]+)`/g, '$1') // 内联代码
+                .replace(/\$([^$]+)\$/g, '$1') // 内联数学公式
+                .replace(/\*\*([^*]+)\*\*/g, '$1') // 粗体
+                .replace(/\*([^*]+)\*/g, '$1') // 斜体
+                .replace(/~~([^~]+)~~/g, '$1'); // 删除线
         },
 
-        // 清理PDF预处理
-        cleanupPDFPreprocessing(contentElement) {
-            // 清理内联代码样式
-            const styledCodes = contentElement.querySelectorAll('code[data-pdf-styled]');
-            styledCodes.forEach(code => {
-                code.removeAttribute('style');
-                code.removeAttribute('data-pdf-styled');
-            });
-            
-            // 清理数学公式样式
-            const styledMath = contentElement.querySelectorAll('[data-pdf-math-processed]');
-            styledMath.forEach(math => {
-                math.removeAttribute('style');
-                math.removeAttribute('data-pdf-math-processed');
-            });
-            
-            // 清理代码块样式
-            const styledCodeBlocks = contentElement.querySelectorAll('pre[data-pdf-code-styled]');
-            styledCodeBlocks.forEach(codeBlock => {
-                codeBlock.removeAttribute('style');
-                codeBlock.removeAttribute('data-pdf-code-styled');
-                
-                // 清理列表项样式
-                const listItems = codeBlock.querySelectorAll('li');
-                listItems.forEach(li => {
-                    li.removeAttribute('style');
-                });
-            });
-            
-            console.log('已清理PDF预处理样式');
-        },
+
 
         // 改进的PDF导出函数 - 根据模式选择导出方式
         async to_pdf(length = 20) {
