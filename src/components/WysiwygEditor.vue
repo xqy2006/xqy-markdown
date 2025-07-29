@@ -89,6 +89,13 @@ export default {
       immediate: true
     }
   },
+  beforeUnmount() {
+    // Clean up event listeners
+    if (this.debouncedUpdate) {
+      this.debouncedUpdate.cancel();
+    }
+    document.removeEventListener('selectionchange', this.handleSelectionChange);
+  },
   methods: {
     setupTurndownRules() {
       // Custom rule for task lists
@@ -295,6 +302,16 @@ export default {
       this.$refs.editor.addEventListener('keyup', this.updateStyleStates);
       this.$refs.editor.addEventListener('mouseup', this.updateStyleStates);
       this.$refs.editor.addEventListener('focus', this.updateStyleStates);
+      this.$refs.editor.addEventListener('click', this.updateStyleStates);
+      // Add selection change listener for immediate updates
+      document.addEventListener('selectionchange', this.handleSelectionChange);
+    },
+
+    handleSelectionChange() {
+      // Only update if the selection is within our editor
+      if (this.$refs.editor && document.activeElement === this.$refs.editor) {
+        this.updateStyleStates();
+      }
     },
 
     updateStyleStates() {
@@ -901,19 +918,67 @@ export default {
     },
 
     toggleBold() {
-      this.toggleFormatWithContext('bold');
+      if (this.isSimpleToggle()) {
+        // Use execCommand for simple cases (selected text)
+        document.execCommand('bold', false, null);
+      } else {
+        // Use our custom logic for cursor-based formatting
+        this.toggleFormatWithContext('bold');
+      }
+      
+      // Force immediate style state update
+      setTimeout(() => {
+        this.updateStyleStates();
+      }, 50);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
     toggleItalic() {
-      this.toggleFormatWithContext('italic');
+      if (this.isSimpleToggle()) {
+        document.execCommand('italic', false, null);
+      } else {
+        this.toggleFormatWithContext('italic');
+      }
+      
+      setTimeout(() => {
+        this.updateStyleStates();
+      }, 50);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
     toggleUnderline() {
-      this.toggleFormatWithContext('underline');
+      if (this.isSimpleToggle()) {
+        document.execCommand('underline', false, null);
+      } else {
+        this.toggleFormatWithContext('underline');
+      }
+      
+      setTimeout(() => {
+        this.updateStyleStates();
+      }, 50);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
     toggleStrikethrough() {
-      this.toggleFormatWithContext('strikeThrough');
+      if (this.isSimpleToggle()) {
+        document.execCommand('strikeThrough', false, null);
+      } else {
+        this.toggleFormatWithContext('strikeThrough');
+      }
+      
+      setTimeout(() => {
+        this.updateStyleStates();
+      }, 50);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    isSimpleToggle() {
+      const selection = window.getSelection();
+      return selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed;
     },
 
     toggleFormatWithContext(formatType) {
@@ -1346,6 +1411,8 @@ export default {
 
     handleBlur() {
       // Clean up empty paragraphs when losing focus, but preserve structure
+      if (!this.$refs.editor) return;
+      
       const content = this.$refs.editor.innerHTML;
       if (content === '<p><br></p>' || content === '<br>' || content.trim() === '') {
         // Only clear if completely empty
