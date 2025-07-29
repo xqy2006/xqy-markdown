@@ -20,7 +20,9 @@ import {
   Heading1, Heading2, Heading3, Quote, List, CheckSquare,
   Table, Minus, Image, Download, Upload, Trash2,
   Eye, EyeOff, PaintBucket, Highlighter, FileText,
-  Hash, Calculator
+  Hash, Calculator, Plus, X, Divide, Square,
+  Superscript, Subscript, RotateCcw, Sigma, 
+  Pi, Infinity, Triangle, Circle
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -49,7 +51,24 @@ const iconMap = {
   'highlight': Highlighter,
   'file': FileText,
   'hash': Hash,
-  'function': Calculator
+  'function': Calculator,
+  // Math symbols
+  'plus': Plus,
+  'minus': Minus,
+  'times': X,
+  'divide': Divide,
+  'fraction': Square,
+  'power': Superscript,
+  'subscript': Subscript,
+  'sqrt': RotateCcw,
+  'vector': RotateCcw,
+  'arc': Circle,
+  'derivative': Quote,
+  'sum': Sigma,
+  'product': Pi,
+  'limit': Infinity,
+  'integral': Triangle,
+  'cases': Square
 }
 
 export default {
@@ -59,7 +78,9 @@ export default {
     Heading1, Heading2, Heading3, Quote, List, CheckSquare,
     Table, Minus, Image, Download, Upload, Trash2,
     Eye, EyeOff, PaintBucket, Highlighter, FileText,
-    Hash, Calculator
+    Hash, Calculator, Plus, X, Divide, Square,
+    Superscript, Subscript, RotateCcw, Sigma, 
+    Pi, Infinity, Triangle, Circle
   },
   props: {
     icon: {
