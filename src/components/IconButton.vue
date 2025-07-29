@@ -17,12 +17,12 @@
 <script>
 import {
   Bold, Italic, Underline, Strikethrough, Code, Code2,
-  Heading1, Heading2, Heading3, Quote, List, CheckSquare,
-  Table, Minus, Image, Download, Upload, Trash2,
+  Heading1, Heading2, Heading3, Heading4, Heading5, Heading6,
+  Quote, List, CheckSquare, Table, Minus, Image, Download, Upload, Trash2,
   Eye, EyeOff, PaintBucket, Highlighter, FileText,
   Hash, Calculator, Plus, X, Divide, Square,
   Superscript, Subscript, RotateCcw, Sigma, 
-  Pi, Infinity, Triangle, Circle
+  Pi, Infinity, Triangle, Circle, ArrowRight
 } from 'lucide-vue-next'
 
 const iconMap = {
@@ -36,6 +36,9 @@ const iconMap = {
   'heading-1': Heading1,
   'heading-2': Heading2,
   'heading-3': Heading3,
+  'heading-4': Heading4,
+  'heading-5': Heading5,
+  'heading-6': Heading6,
   'quote': Quote,
   'list': List,
   'check-list': CheckSquare,
@@ -52,35 +55,36 @@ const iconMap = {
   'file': FileText,
   'hash': Hash,
   'function': Calculator,
-  // Math symbols
+  // Math symbols - improved icons to avoid duplicates
   'plus': Plus,
   'minus': Minus,
   'times': X,
   'divide': Divide,
-  'fraction': Square,
+  'fraction': Divide, // Better icon for fractions
   'power': Superscript,
   'subscript': Subscript,
-  'sqrt': RotateCcw,
-  'vector': RotateCcw,
+  'sqrt': Square, // Use square as placeholder for root
+  'vector': ArrowRight,
   'arc': Circle,
-  'derivative': Quote,
+  'derivative': Quote, // Mathematical notation style
   'sum': Sigma,
   'product': Pi,
   'limit': Infinity,
   'integral': Triangle,
-  'cases': Square
+  'cases': Square, // Use square for brackets placeholder
+  'newline': Minus // Use minus for line break
 }
 
 export default {
   name: 'IconButton',
   components: {
     Bold, Italic, Underline, Strikethrough, Code, Code2,
-    Heading1, Heading2, Heading3, Quote, List, CheckSquare,
-    Table, Minus, Image, Download, Upload, Trash2,
+    Heading1, Heading2, Heading3, Heading4, Heading5, Heading6,
+    Quote, List, CheckSquare, Table, Minus, Image, Download, Upload, Trash2,
     Eye, EyeOff, PaintBucket, Highlighter, FileText,
     Hash, Calculator, Plus, X, Divide, Square,
     Superscript, Subscript, RotateCcw, Sigma, 
-    Pi, Infinity, Triangle, Circle
+    Pi, Infinity, Triangle, Circle, ArrowRight
   },
   props: {
     icon: {

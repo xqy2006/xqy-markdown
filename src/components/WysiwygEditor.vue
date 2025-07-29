@@ -29,14 +29,24 @@ export default {
       required: true
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'style-state-update'],
   data() {
     return {
       htmlContent: '',
       turndownService: null,
       isUpdating: false,
       lastCaretPosition: null,
-      debouncedUpdate: null
+      debouncedUpdate: null,
+      userMovedCursor: false,
+      isInDebounceperiod: false,
+      currentStyles: {
+        bold: false,
+        italic: false,
+        underline: false,
+        code: false,
+        strikethrough: false
+      },
+      currentHeadingLevel: 0
     }
   },
   created() {
@@ -56,12 +66,18 @@ export default {
     // Add custom rules for special elements
     this.setupTurndownRules();
     
-    // Initialize debounced update function
+    // Initialize debounced update function with smart cursor detection
     this.debouncedUpdate = debounce(this.performContentUpdate, 300);
   },
   mounted() {
     // Initial conversion from Markdown to HTML
     this.updateHtmlContent();
+    
+    // Setup cursor movement detection during debounce
+    this.setupCursorMovementDetection();
+    
+    // Setup style state monitoring
+    this.setupStyleStateMonitoring();
   },
   watch: {
     modelValue: {
@@ -149,12 +165,33 @@ export default {
       // Save caret position immediately
       this.saveCaretPosition();
       
+      // Mark that we're in debounce period
+      this.isInDebounceperiod = true;
+      this.userMovedCursor = false;
+      
       // Use debounced update to prevent cursor jumping
       this.debouncedUpdate(event.target.innerHTML);
     },
 
     performContentUpdate(htmlContent) {
-      // Convert HTML back to Markdown
+      // Check if user moved cursor during debounce
+      if (this.userMovedCursor) {
+        // User moved cursor, only update content, don't restore cursor position
+        const markdownContent = this.turndownService.turndown(htmlContent);
+        this.isUpdating = true;
+        this.$emit('update:modelValue', markdownContent);
+        
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.isUpdating = false;
+            this.isInDebounceperiod = false;
+            this.userMovedCursor = false;
+          }, 50);
+        });
+        return;
+      }
+      
+      // Normal update with cursor restoration
       const markdownContent = this.turndownService.turndown(htmlContent);
       
       this.isUpdating = true;
@@ -164,9 +201,69 @@ export default {
       this.$nextTick(() => {
         setTimeout(() => {
           this.isUpdating = false;
+          this.isInDebounceperiod = false;
           this.restoreCaretPosition();
         }, 50);
       });
+    },
+
+    setupCursorMovementDetection() {
+      // Listen for selection changes during debounce period
+      document.addEventListener('selectionchange', () => {
+        if (this.isInDebounceperiod && this.$refs.editor && document.activeElement === this.$refs.editor) {
+          this.userMovedCursor = true;
+        }
+      });
+    },
+
+    setupStyleStateMonitoring() {
+      // Monitor cursor position for style state updates
+      this.$refs.editor.addEventListener('keyup', this.updateStyleStates);
+      this.$refs.editor.addEventListener('mouseup', this.updateStyleStates);
+      this.$refs.editor.addEventListener('focus', this.updateStyleStates);
+    },
+
+    updateStyleStates() {
+      if (!this.$refs.editor) return;
+      
+      const selection = window.getSelection();
+      if (selection.rangeCount === 0) return;
+      
+      const range = selection.getRangeAt(0);
+      const element = range.commonAncestorContainer.nodeType === Node.TEXT_NODE 
+        ? range.commonAncestorContainer.parentElement 
+        : range.commonAncestorContainer;
+      
+      // Update current styles
+      this.currentStyles = {
+        bold: this.isStyleActive(element, 'strong, b'),
+        italic: this.isStyleActive(element, 'em, i'),
+        underline: this.isStyleActive(element, 'u'),
+        code: this.isStyleActive(element, 'code'),
+        strikethrough: this.isStyleActive(element, 'del, s, strike')
+      };
+      
+      // Update current heading level
+      this.currentHeadingLevel = this.getCurrentHeadingLevel(element);
+      
+      // Emit style state update for parent component
+      this.$emit('style-state-update', {
+        styles: this.currentStyles,
+        headingLevel: this.currentHeadingLevel
+      });
+    },
+
+    isStyleActive(element, selector) {
+      return element && element.closest(selector) !== null;
+    },
+
+    getCurrentHeadingLevel(element) {
+      if (!element) return 0;
+      
+      const headingElement = element.closest('h1, h2, h3, h4, h5, h6');
+      if (!headingElement) return 0;
+      
+      return parseInt(headingElement.tagName.substring(1));
     },
 
     handleKeydown(event) {
@@ -638,6 +735,7 @@ export default {
       if (!blockElement || blockElement === this.$refs.editor) {
         // No suitable block found, create a new heading
         document.execCommand('formatBlock', false, 'h1');
+        this.updateStyleStates();
         return;
       }
       
@@ -650,6 +748,126 @@ export default {
       
       // Format as heading
       document.execCommand('formatBlock', false, `h${nextLevel}`);
+      
+      // Update style states after change
+      this.updateStyleStates();
+      
+      // Trigger input event to update the content
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleBold() {
+      document.execCommand('bold', false, null);
+      this.updateStyleStates();
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleItalic() {
+      document.execCommand('italic', false, null);
+      this.updateStyleStates();
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleUnderline() {
+      document.execCommand('underline', false, null);
+      this.updateStyleStates();
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleStrikethrough() {
+      document.execCommand('strikeThrough', false, null);
+      this.updateStyleStates();
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleCode() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString();
+      
+      // Check if we're already in a code element
+      const container = range.commonAncestorContainer;
+      const element = container.nodeType === Node.TEXT_NODE 
+        ? container.parentElement 
+        : container;
+      const codeElement = element.closest('code');
+      
+      if (codeElement) {
+        // Remove code formatting
+        const textNode = document.createTextNode(codeElement.textContent);
+        codeElement.parentNode.replaceChild(textNode, codeElement);
+      } else {
+        // Add code formatting
+        if (selectedText) {
+          const codeElement = document.createElement('code');
+          codeElement.textContent = selectedText;
+          range.deleteContents();
+          range.insertNode(codeElement);
+          
+          // Position cursor after the code element
+          const newRange = document.createRange();
+          newRange.setStartAfter(codeElement);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+      }
+      
+      this.updateStyleStates();
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertColorText(color) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString();
+      
+      if (selectedText) {
+        const fontElement = document.createElement('font');
+        fontElement.setAttribute('color', color);
+        fontElement.textContent = selectedText;
+        
+        range.deleteContents();
+        range.insertNode(fontElement);
+        
+        // Position cursor after the font element
+        const newRange = document.createRange();
+        newRange.setStartAfter(fontElement);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    },
+
+    insertHighlight() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString();
+      
+      if (selectedText) {
+        const markElement = document.createElement('mark');
+        markElement.textContent = selectedText;
+        
+        range.deleteContents();
+        range.insertNode(markElement);
+        
+        // Position cursor after the mark element
+        const newRange = document.createRange();
+        newRange.setStartAfter(markElement);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     },
 
     detectAndConvertMarkdown(event) {
@@ -804,6 +1022,191 @@ export default {
         this.$refs.editor.innerHTML = '';
         this.$emit('update:modelValue', '');
       }
+    },
+
+    insertUnorderedList() {
+      document.execCommand('insertUnorderedList', false, null);
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertTaskList() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      
+      // Create task list item
+      const li = document.createElement('li');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.style.marginRight = '8px';
+      
+      li.appendChild(checkbox);
+      li.appendChild(document.createTextNode(' '));
+      
+      // Create ul if not in one
+      let listElement = range.commonAncestorContainer;
+      if (listElement.nodeType === Node.TEXT_NODE) {
+        listElement = listElement.parentElement;
+      }
+      
+      let ul = listElement.closest('ul');
+      if (!ul) {
+        ul = document.createElement('ul');
+        ul.style.listStyle = 'none';
+        ul.style.paddingLeft = '20px';
+        
+        range.insertNode(ul);
+      }
+      
+      ul.appendChild(li);
+      
+      // Position cursor in the list item
+      const newRange = document.createRange();
+      newRange.setStart(li, 1);
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertBlockQuote() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      
+      // Find current block
+      let blockElement = container.nodeType === Node.TEXT_NODE 
+        ? container.parentElement 
+        : container;
+      
+      while (blockElement && blockElement !== this.$refs.editor) {
+        if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(blockElement.tagName)) {
+          break;
+        }
+        blockElement = blockElement.parentElement;
+      }
+      
+      if (blockElement && blockElement !== this.$refs.editor) {
+        const blockquote = document.createElement('blockquote');
+        blockquote.style.borderLeft = '4px solid #ddd';
+        blockquote.style.paddingLeft = '16px';
+        blockquote.style.margin = '16px 0';
+        
+        // Move content to blockquote
+        blockquote.appendChild(blockElement.cloneNode(true));
+        blockElement.parentNode.replaceChild(blockquote, blockElement);
+      }
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertCodeBlock() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      
+      pre.style.backgroundColor = '#f6f8fa';
+      pre.style.borderRadius = '6px';
+      pre.style.padding = '16px';
+      pre.style.overflow = 'auto';
+      pre.style.fontFamily = 'monospace';
+      
+      code.textContent = 'Your code here...';
+      pre.appendChild(code);
+      
+      const range = selection.getRangeAt(0);
+      range.insertNode(pre);
+      
+      // Select the placeholder text
+      const newRange = document.createRange();
+      newRange.selectNodeContents(code);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertHorizontalRule() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const hr = document.createElement('hr');
+      hr.style.border = 'none';
+      hr.style.borderTop = '1px solid #e1e4e8';
+      hr.style.margin = '24px 0';
+      
+      const range = selection.getRangeAt(0);
+      range.insertNode(hr);
+      
+      // Position cursor after HR
+      const newRange = document.createRange();
+      newRange.setStartAfter(hr);
+      newRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    insertImage() {
+      const url = prompt('请输入图片URL:');
+      if (url) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '图片';
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+        
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          range.insertNode(img);
+        }
+        
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    },
+
+    insertMathInline() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const mathText = prompt('请输入LaTeX公式:');
+      if (mathText) {
+        const span = document.createElement('span');
+        span.className = 'math-inline';
+        span.textContent = `$${mathText}$`;
+        
+        const range = selection.getRangeAt(0);
+        range.insertNode(span);
+        
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    },
+
+    insertTOC() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const toc = document.createElement('div');
+      toc.textContent = '[[TOC]]';
+      toc.style.padding = '8px';
+      toc.style.backgroundColor = '#f6f8fa';
+      toc.style.border = '1px dashed #d1d9e0';
+      toc.style.borderRadius = '6px';
+      toc.style.textAlign = 'center';
+      toc.style.color = '#656d76';
+      
+      const range = selection.getRangeAt(0);
+      range.insertNode(toc);
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     }
   }
 }
