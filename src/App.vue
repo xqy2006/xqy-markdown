@@ -57,7 +57,7 @@
                     <option value="svg">智能矢量</option>
                     <option value="screenshot">截图</option>
                 </select>
-                <small class="text-gray">(智能矢量：可选择文字，完美样式)</small>
+                <small class="text-gray">(智能矢量：推荐，支持中文和完美样式保留)</small>
             </div>
         </div>
     </div>
@@ -962,7 +962,7 @@ export default {
                 if (this.shouldSkipElement(element)) continue;
                 
                 const blockInfo = await this.analyzeEnhancedElementStyle(element, contentElement);
-                if (blockInfo && blockInfo.text && typeof blockInfo.text === 'string' && blockInfo.text.trim()) {
+                if (blockInfo && blockInfo.text && typeof blockInfo.text === 'string' && blockInfo.text.trim && blockInfo.text.trim()) {
                     styledBlocks.push(blockInfo);
                 }
             }
@@ -2338,6 +2338,18 @@ export default {
 
         // 改进的PDF导出函数 - 根据模式选择导出方式
         async to_pdf(length = 20) {
+            // 检查内容是否包含中文字符
+            const hasChinese = /[\u4e00-\u9fff]/.test(this.mdtext);
+            
+            // 如果使用纯文本模式但包含中文，建议使用智能矢量模式
+            if (this.pdfExportMode === 'vector' && hasChinese) {
+                const userChoice = confirm('检测到中文内容。纯文本模式对中文支持有限，建议使用"智能矢量"模式以获得更好的效果。\n\n点击"确定"继续使用纯文本模式（中文可能显示异常）\n点击"取消"将自动切换到智能矢量模式');
+                if (!userChoice) {
+                    // 自动切换到智能矢量模式
+                    return this.to_pdf_svg(length);
+                }
+            }
+
             if (this.pdfExportMode === 'vector') {
                 return this.to_pdf_vector();
             } else if (this.pdfExportMode === 'svg') {
@@ -2347,12 +2359,14 @@ export default {
             }
         },
 
-        // 智能矢量PDF导出 - 高质量Canvas转图片，重用现有分页逻辑
+        // 智能矢量PDF导出 - 优化中文支持和高质量渲染
         async to_pdf_svg(length = 20) {
             this.pdfdown = true;
             this.count = 0;
 
             try {
+                console.log('=== 智能矢量PDF导出开始 ===');
+                
                 // 设置A4宽度并等待布局稳定
                 this.setA4Width();
                 await new Promise(resolve => setTimeout(resolve, 800));
@@ -2368,18 +2382,16 @@ export default {
                 const widthRatio = pdfContentWidth / contentWidth;
                 const idealPageHeightInPixels = (pageHeight - margin * 2) / widthRatio;
 
-                console.log('=== 智能矢量PDF导出开始 ===');
                 console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
                 console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
 
-                // 使用更高的缩放比例以获得更好的质量
-                const targetScale = Math.max(this.exportScale * 2, 3.0);
-                const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
+                // 使用现有分页逻辑
+                const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, this.exportScale);
                 this.sum = breakPoints.length - 1;
 
                 console.log('智能矢量模式页面分隔点:', breakPoints);
 
-                // 逐页处理
+                // 逐页处理，使用优化的html2canvas设置
                 for (let i = 0; i < breakPoints.length - 1; i++) {
                     this.count = i + 1;
                     
@@ -2393,14 +2405,13 @@ export default {
 
                     console.log(`处理第 ${i + 1} 页，范围: ${start} - ${end}, 高度: ${pageHeight}`);
 
-                    // 确保高度大于0
                     if (pageHeight <= 0) {
                         console.warn(`页面 ${i + 1} 高度为 ${pageHeight}，跳过`);
                         continue;
                     }
 
-                    // 创建高质量页面图片
-                    const canvas = await this.createHighQualityPageCanvas(contentElement, start, pageHeight, targetScale);
+                    // 创建优化的高质量页面图像
+                    const canvas = await this.createEnhancedPageCanvas(contentElement, start, pageHeight);
                     
                     // 计算PDF中的显示尺寸
                     const pdfImageWidth = pdfContentWidth;
@@ -2410,7 +2421,6 @@ export default {
                     const imgData = canvas.toDataURL('image/png', 1.0);
                     pdf.addImage(imgData, 'PNG', margin, margin, pdfImageWidth, pdfImageHeight);
 
-                    // 添加延迟以避免UI阻塞
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
 
@@ -2431,32 +2441,92 @@ export default {
             }
         },
 
-        // 创建高质量页面Canvas
-        async createHighQualityPageCanvas(contentElement, offsetTop, height, scale) {
-            const rect = contentElement.getBoundingClientRect();
+        // 创建增强的页面Canvas - 专门优化中文字符和代码块显示
+        async createEnhancedPageCanvas(contentElement, offsetTop, height) {
+            // 创建临时容器以隔离页面内容
+            const pageContainer = document.createElement('div');
+            pageContainer.style.position = 'absolute';
+            pageContainer.style.left = '-9999px';
+            pageContainer.style.top = '0';
+            pageContainer.style.width = contentElement.style.width;
+            pageContainer.style.height = height + 'px';
+            pageContainer.style.overflow = 'hidden';
+            pageContainer.style.backgroundColor = '#ffffff';
             
-            console.log(`创建高质量Canvas: ${rect.width} x ${height}, scale: ${scale}`);
-            
-            // 使用html2canvas以高质量设置渲染指定区域
-            const canvas = await html2canvas(contentElement, {
-                scale: scale,
-                useCORS: true,
-                allowTaint: true,
-                backgroundColor: '#ffffff',
-                y: offsetTop,
-                height: height,
-                scrollX: 0,
-                scrollY: 0,
-                width: rect.width,
-                logging: false,
-                // 增强质量设置
-                allowTaint: false,
-                foreignObjectRendering: true,
-                imageTimeout: 15000,
-                removeContainer: true
-            });
-            
-            return canvas;
+            // 添加CSS确保样式正确应用
+            pageContainer.style.fontFamily = 'Arial, "Microsoft YaHei", "SimHei", sans-serif';
+            document.body.appendChild(pageContainer);
+
+            // 克隆内容并定位到正确位置
+            const clonedContent = contentElement.cloneNode(true);
+            clonedContent.style.position = 'relative';
+            clonedContent.style.top = -offsetTop + 'px';
+            clonedContent.style.left = '0';
+            pageContainer.appendChild(clonedContent);
+
+            // 等待样式应用和字体加载
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            try {
+                // 使用专门优化的html2canvas设置
+                const canvas = await html2canvas(pageContainer, {
+                    scale: 3.0,                         // 高分辨率输出，确保中文清晰
+                    backgroundColor: '#ffffff',         // 纯白背景
+                    foreignObjectRendering: true,       // 更好的SVG和复杂元素支持
+                    imageTimeout: 15000,               // 足够的渲染时间
+                    removeContainer: true,             // 清理DOM
+                    useCORS: true,                     // 跨域支持
+                    allowTaint: false,                 // 安全设置
+                    logging: false,                    // 禁用日志
+                    letterRendering: true,             // 优化字母渲染
+                    // 专门为中文和代码块优化的设置
+                    onclone: (clonedDoc) => {
+                        // 确保所有样式正确应用到克隆的文档
+                        const originalStyles = document.querySelectorAll('style, link[rel="stylesheet"]');
+                        originalStyles.forEach(styleEl => {
+                            if (styleEl.tagName === 'STYLE') {
+                                const newStyle = clonedDoc.createElement('style');
+                                newStyle.textContent = styleEl.textContent;
+                                clonedDoc.head.appendChild(newStyle);
+                            } else if (styleEl.tagName === 'LINK' && styleEl.rel === 'stylesheet') {
+                                const newLink = clonedDoc.createElement('link');
+                                newLink.rel = 'stylesheet';
+                                newLink.href = styleEl.href;
+                                clonedDoc.head.appendChild(newLink);
+                            }
+                        });
+
+                        // 确保代码块样式正确
+                        const codeBlocks = clonedDoc.querySelectorAll('pre');
+                        codeBlocks.forEach(pre => {
+                            pre.style.backgroundColor = '#f6f8fa';
+                            pre.style.border = '1px solid #d0d7de';
+                            pre.style.borderRadius = '6px';
+                            pre.style.padding = '16px';
+                            pre.style.overflow = 'auto';
+                            pre.style.fontSize = '85%';
+                            pre.style.lineHeight = '1.45';
+                        });
+
+                        // 确保内联代码样式
+                        const inlineCodes = clonedDoc.querySelectorAll('code:not(pre code)');
+                        inlineCodes.forEach(code => {
+                            code.style.backgroundColor = 'rgba(175,184,193,0.2)';
+                            code.style.padding = '0.2em 0.4em';
+                            code.style.borderRadius = '6px';
+                            code.style.fontSize = '85%';
+                        });
+
+                        // 优化中文字体
+                        clonedDoc.body.style.fontFamily = 'Arial, "Microsoft YaHei", "SimHei", sans-serif';
+                    }
+                });
+
+                return canvas;
+            } finally {
+                // 清理临时容器
+                document.body.removeChild(pageContainer);
+            }
         },
 
 
