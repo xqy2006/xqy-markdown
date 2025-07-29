@@ -691,14 +691,6 @@ export default {
     },
 
     handleKeydown(event) {
-      // Handle Backspace/Delete key for smart format removal
-      if (event.key === 'Backspace' || event.key === 'Delete') {
-        const handled = this.handleSmartDeletion(event);
-        if (handled) {
-          return; // Prevent default deletion behavior
-        }
-      }
-
       // Handle real-time markdown syntax conversion (Typora-like behavior)
       if (event.key === ' ' || event.key === 'Enter') {
         const converted = this.detectAndConvertMarkdown(event);
@@ -1274,10 +1266,10 @@ export default {
         this.insertFormattingSpan(formatType, range);
       }
       
-      // Force immediate style update
+      // Force immediate style update after a short delay
       setTimeout(() => {
         this.updateStyleStates();
-      }, 50);
+      }, 100);
     },
 
     isFormatActiveAtCursor(formatType, element) {
@@ -1313,8 +1305,8 @@ export default {
           break;
       }
       
-      // Add a zero-width space to make it editable
-      span.appendChild(document.createTextNode('\u200B'));
+      // Add a non-breaking space to make it editable
+      span.appendChild(document.createTextNode('\u00A0'));
       
       range.insertNode(span);
       
@@ -1327,13 +1319,16 @@ export default {
       selection.removeAllRanges();
       selection.addRange(newRange);
       
-      // Clean up any zero-width spaces on input
-      span.addEventListener('input', () => {
-        if (span.textContent === '\u200B') {
-          // Keep the span but remove zero-width space when user types
-          span.textContent = '';
+      // Clean up the non-breaking space when user starts typing
+      let cleaned = false;
+      const cleanupHandler = () => {
+        if (!cleaned && span.textContent.length > 1) {
+          span.textContent = span.textContent.replace('\u00A0', '');
+          cleaned = true;
+          span.removeEventListener('input', cleanupHandler);
         }
-      });
+      };
+      span.addEventListener('input', cleanupHandler);
     },
 
     insertFormattingSpan(formatType, range) {
@@ -1884,7 +1879,7 @@ export default {
         blockElement = blockElement.parentElement;
       }
       
-      // Handle empty content case
+      // Handle empty content case or when no suitable block is found
       if (!blockElement || blockElement === this.$refs.editor) {
         // Create a new blockquote with empty paragraph
         const blockquote = document.createElement('blockquote');
@@ -1904,7 +1899,8 @@ export default {
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
-      } else if (blockElement && blockElement !== this.$refs.editor) {
+      } else {
+        // Transform existing block into blockquote
         const blockquote = document.createElement('blockquote');
         blockquote.style.borderLeft = '4px solid #ddd';
         blockquote.style.paddingLeft = '16px';
@@ -1929,70 +1925,20 @@ export default {
       const selection = window.getSelection();
       if (!selection.rangeCount) return;
       
-      const range = selection.getRangeAt(0);
-      
-      // Create code block with language selector
-      const codeBlockWrapper = document.createElement('div');
-      codeBlockWrapper.className = 'code-block-wrapper';
-      codeBlockWrapper.style.position = 'relative';
-      codeBlockWrapper.style.margin = '16px 0';
-      
-      // Create language input
-      const languageInput = document.createElement('input');
-      languageInput.type = 'text';
-      languageInput.placeholder = '输入语言 (如: javascript, python)';
-      languageInput.className = 'code-language-input';
-      languageInput.style.cssText = `
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        padding: 4px 8px;
-        border: 1px solid #d1d9e0;
-        border-radius: 4px;
-        font-size: 12px;
-        background: rgba(255, 255, 255, 0.9);
-        z-index: 10;
-        max-width: 150px;
-      `;
-      
       const pre = document.createElement('pre');
       const code = document.createElement('code');
       
       pre.style.backgroundColor = '#f6f8fa';
       pre.style.borderRadius = '6px';
       pre.style.padding = '16px';
-      pre.style.paddingTop = '40px'; // Space for language input
       pre.style.overflow = 'auto';
       pre.style.fontFamily = 'monospace';
-      pre.className = 'hljs'; // Add hljs class for consistency
       
       code.textContent = 'Your code here...';
-      code.contentEditable = true;
-      code.style.outline = 'none';
-      
       pre.appendChild(code);
-      codeBlockWrapper.appendChild(languageInput);
-      codeBlockWrapper.appendChild(pre);
       
-      // Handle language change
-      languageInput.addEventListener('input', () => {
-        const language = languageInput.value.trim();
-        if (language) {
-          code.className = `language-${language}`;
-          // Trigger syntax highlighting if available
-          this.highlightCodeBlock(code, language);
-        } else {
-          code.className = '';
-        }
-        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-      
-      // Handle code editing
-      code.addEventListener('input', () => {
-        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-      
-      range.insertNode(codeBlockWrapper);
+      const range = selection.getRangeAt(0);
+      range.insertNode(pre);
       
       // Select the placeholder text
       const newRange = document.createRange();
@@ -2001,18 +1947,6 @@ export default {
       selection.addRange(newRange);
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
-    },
-    
-    highlightCodeBlock(codeElement, language) {
-      // Apply syntax highlighting if hljs is available
-      if (window.hljs && window.hljs.getLanguage && window.hljs.getLanguage(language)) {
-        try {
-          const result = window.hljs.highlight(codeElement.textContent, { language });
-          codeElement.innerHTML = result.value;
-        } catch (error) {
-          console.warn('Syntax highlighting failed:', error);
-        }
-      }
     },
 
     insertHorizontalRule() {
@@ -2100,134 +2034,6 @@ export default {
       }
     },
 
-    handleSmartDeletion(event) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return false;
-      
-      const range = selection.getRangeAt(0);
-      const container = range.startContainer;
-      
-      // Only handle when cursor is at the beginning of content
-      if (range.startOffset !== 0 || !range.collapsed) {
-        return false; // Let normal deletion happen
-      }
-      
-      // Find what format we're in
-      let element = container.nodeType === Node.TEXT_NODE 
-        ? container.parentElement 
-        : container;
-      
-      // Check for blockquote
-      const blockquote = element.closest('blockquote');
-      if (blockquote) {
-        event.preventDefault();
-        this.removeBlockquoteFormat(blockquote, range);
-        return true;
-      }
-      
-      // Check for list item
-      const listItem = element.closest('li');
-      if (listItem) {
-        event.preventDefault();
-        
-        // Check if it's nested
-        const parentList = listItem.parentElement;
-        const grandparentListItem = parentList?.closest('li');
-        
-        if (grandparentListItem) {
-          // Handle nested list item - outdent
-          this.outdentListItem(listItem);
-        } else {
-          // Handle top-level list item - remove list formatting
-          this.removeListItemFormat(listItem, range);
-        }
-        return true;
-      }
-      
-      return false; // No special formatting to remove
-    },
-    
-    removeBlockquoteFormat(blockquote, range) {
-      // Remove blockquote formatting, keeping content
-      const content = blockquote.innerHTML;
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = content;
-      
-      // Replace blockquote with its content
-      const fragment = document.createDocumentFragment();
-      while (wrapper.firstChild) {
-        fragment.appendChild(wrapper.firstChild);
-      }
-      
-      blockquote.parentNode.replaceChild(fragment, blockquote);
-      
-      // Position cursor at the beginning of the content
-      const newRange = document.createRange();
-      const firstTextNode = this.getFirstTextNode(fragment.firstChild || this.$refs.editor);
-      if (firstTextNode) {
-        newRange.setStart(firstTextNode, 0);
-        newRange.collapse(true);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-      }
-      
-      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
-    },
-    
-    removeListItemFormat(listItem, range) {
-      // Remove list item formatting, converting to paragraph
-      const content = listItem.innerHTML;
-      
-      // Remove checkbox if it's a task list
-      const cleanContent = content.replace(/<input[^>]*type="checkbox"[^>]*>/g, '').trim();
-      
-      const paragraph = document.createElement('p');
-      paragraph.innerHTML = cleanContent || '<br>';
-      
-      const list = listItem.parentElement;
-      
-      // If this is the only item in the list, replace the entire list
-      if (list.children.length === 1) {
-        list.parentNode.replaceChild(paragraph, list);
-      } else {
-        // Replace just this item with a paragraph
-        list.parentNode.insertBefore(paragraph, list);
-        listItem.remove();
-      }
-      
-      // Position cursor at the beginning of the paragraph
-      const newRange = document.createRange();
-      const firstTextNode = this.getFirstTextNode(paragraph);
-      if (firstTextNode) {
-        newRange.setStart(firstTextNode, 0);
-      } else {
-        newRange.setStart(paragraph, 0);
-      }
-      newRange.collapse(true);
-      
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-      
-      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
-    },
-    
-    getFirstTextNode(element) {
-      if (!element) return null;
-      
-      if (element.nodeType === Node.TEXT_NODE) {
-        return element;
-      }
-      
-      for (let child of element.childNodes) {
-        const textNode = this.getFirstTextNode(child);
-        if (textNode) return textNode;
-      }
-      
-      return null;
-    },
-    
     insertTOC() {
       const selection = window.getSelection();
       if (!selection.rangeCount) return;
@@ -2246,6 +2052,7 @@ export default {
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     }
+  }
 }
 </script>
 
@@ -2369,39 +2176,5 @@ export default {
 
 .wysiwyg-editor .math-block-rendered .katex-display {
   margin: 0;
-}
-
-/* Code block with language selector styling */
-.wysiwyg-editor .code-block-wrapper {
-  position: relative;
-  margin: 16px 0;
-}
-
-.wysiwyg-editor .code-language-input {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 4px 8px;
-  border: 1px solid #d1d9e0;
-  border-radius: 4px;
-  font-size: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  z-index: 10;
-  max-width: 150px;
-  transition: all 0.2s ease;
-}
-
-.wysiwyg-editor .code-language-input:focus {
-  border-color: #0969da;
-  box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
-  outline: none;
-}
-
-.wysiwyg-editor .code-block-wrapper:hover .code-language-input {
-  opacity: 1;
-}
-
-.wysiwyg-editor .code-block-wrapper .code-language-input {
-  opacity: 0.7;
 }
 </style>
