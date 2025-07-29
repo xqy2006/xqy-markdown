@@ -39,8 +39,18 @@
 
 <div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
-        <b>导出设置：</b>
+        <b>编辑设置：</b>
         <div class="export-settings">
+            <div class="setting-group">
+                <label>编辑模式：</label>
+                <button 
+                  class="btn btn-sm" 
+                  :class="isWysiwygMode ? 'btn-primary' : 'btn-outline'"
+                  @click="toggleEditingMode"
+                >
+                  {{ isWysiwygMode ? 'WYSIWYG模式' : '传统模式' }}
+                </button>
+            </div>
             <div class="setting-group">
                 <label>文件名：</label>
                 <input v-model="filename" class="form-control input-sm" type="text" placeholder="导出文件名" style="flex: 1;" />
@@ -54,55 +64,63 @@
     </div>
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')">img</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()">显示Tex工具箱</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()">隐藏Tex工具箱</button></td>
+            <td><IconButton :icon="getHeadingIcon()" :tooltip="getHeadingTooltip()" :isActive="buttonStates.heading > 0" @click="title()" /></td>
+            <td><IconButton icon="code" tooltip="代码块" @click="add1('\n\`\`\`\n')" /></td>
+            <td><IconButton icon="code" tooltip="单行代码" :isActive="buttonStates.code" @click="add1('\`')" /></td>
+            <td><IconButton icon="image" tooltip="图片" @click="add4('![](',')')" /></td>
+            <td><IconButton icon="quote" tooltip="引用" @click="add2('> ')" /></td>
+            <td><IconButton icon="list" tooltip="无序列表" @click="add2('- ')" /></td>
+            <td><IconButton icon="check" tooltip="任务列表" @click="add2('- [ ] ')" /></td>
+            <td><IconButton icon="hash" tooltip="目录" @click="add3('[[TOC]]')" /></td>
+            <td><IconButton icon="minus" tooltip="分割线" @click="add3('------')" /></td>
+            <td><IconButton icon="function" tooltip="Tex公式" @click="add4(' $','$ ')" /></td>
+            <td><IconButton :icon="tex ? 'eye-off' : 'eye'" :tooltip="tex ? '隐藏Tex工具箱' : '显示Tex工具箱'" @click="toggleTex()" /></td>
         </span>
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')">标红</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
+            <td><IconButton icon="bold" tooltip="粗体 (Ctrl+B)" :isActive="buttonStates.bold" @click="add1('**')" /></td>
+            <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" :isActive="buttonStates.italic" @click="add1('*')" /></td>
+            <td><IconButton icon="underline" tooltip="下划线" :isActive="buttonStates.underline" @click="add4('<u>','</u>')" /></td>
+            <td><IconButton icon="paint" tooltip="标红" @click="add4('<font color=\x22red\x22>','</font>')" /></td>
+            <td><IconButton icon="highlight" tooltip="高亮" @click="add4('<mark>','</mark>')" /></td>
+            <td><IconButton icon="strikethrough" tooltip="删除线" :isActive="buttonStates.strikethrough" @click="add1('~~')" /></td>
         </span>
-        <span class="BtnGroup d-block" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')">叉乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')">除法</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')">换行</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')">根号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')">求和</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')">求积</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')">极限</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')">积分</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')">大括号</button></td>
+        <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton icon="plus" tooltip="加号" @click="add4('+','')" /></td>
+            <td><IconButton icon="minus" tooltip="减号" @click="add4('-','')" /></td>
+            <td><IconButton icon="times" tooltip="点乘" @click="add4('\\cdot','')" /></td>
+            <td><IconButton icon="times" tooltip="叉乘" @click="add4('\\times','')" /></td>
+            <td><IconButton icon="divide" tooltip="除法" @click="add4('\\div','')" /></td>
+            <td><IconButton icon="cases" tooltip="换行" @click="add4('\\\\','')" /></td>
+            <td><IconButton icon="fraction" tooltip="分数" @click="add4('\\frac{','}{}}')" /></td>
+            <td><IconButton icon="power" tooltip="上标" @click="add4('^{','}')" /></td>
+            <td><IconButton icon="subscript" tooltip="下标" @click="add4('_{','}')" /></td>
+            <td><IconButton icon="sqrt" tooltip="根号" @click="add4('\\sqrt[]{','}')" /></td>
+            <td><IconButton icon="vector" tooltip="向量" @click="add4('\\overrightarrow{','}')" /></td>
+            <td><IconButton icon="arc" tooltip="弧" @click="add4('\\overset{\\frown}{','}')" /></td>
+            <td><IconButton icon="derivative" tooltip="导数" @click="addDerivative" /></td>
+            <td><IconButton icon="sum" tooltip="求和" @click="add4('\\sum_{','}^{} {}')" /></td>
+            <td><IconButton icon="product" tooltip="求积" @click="add4('\\prod_{','}^{} {}')" /></td>
+            <td><IconButton icon="limit" tooltip="极限" @click="add4('\\lim_{n \\to \\infty}{','}')" /></td>
+            <td><IconButton icon="integral" tooltip="积分" @click="add4('\\int_{}^{} {','}\\, dx')" /></td>
+            <td><IconButton icon="cases" tooltip="大括号" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')" /></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
-        <div>
+        <div v-if="!isWysiwygMode">
             <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
+        </div>
+        <div v-else>
+            <WysiwygEditor 
+              ref="wysiwygEditor"
+              v-model="mdtext"
+              :getMarkdownRenderer="get_md"
+              @selection-changed="handleSelectionChanged"
+              @heading-changed="handleHeadingChanged"
+            />
         </div>
     </div>
 </div>
-<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+<div class="Box Box--blue" v-if="!isWysiwygMode" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>预览：</b>
     </div>
@@ -296,8 +314,14 @@ import mk from 'markdown-it-texmath'
 import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
+import IconButton from './components/IconButton.vue'
+import WysiwygEditor from './components/WysiwygEditor.vue'
 
 export default {
+    components: {
+        IconButton,
+        WysiwygEditor
+    },
     data() {
         return {
             mdtext: '',
@@ -310,11 +334,22 @@ export default {
             count: 0,
             sum: 1,
             tex:false,
-            exportScale: 1.0, // 新增：导出缩放倍率
-            originalStyles: null, // 保存原始样式
-            autoSaveStatus: '', // 状态提示
-            autoSaveTimer: null, // 自动保存定时器
-            isInitializing: true, // 新增：标记是否正在初始化
+            exportScale: 1.0,
+            originalStyles: null,
+            autoSaveStatus: '',
+            autoSaveTimer: null,
+            isInitializing: true,
+            // WYSIWYG 模式相关
+            isWysiwygMode: false,
+            buttonStates: {
+                bold: false,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+                code: false,
+                heading: 0
+            },
+            currentHeadingLevel: 0
         }
     },
     created(){
@@ -324,6 +359,12 @@ export default {
     mounted() {
         this.loadFromStorage();
         this.setupAutoSave();
+        
+        // 加载WYSIWYG模式偏好
+        const savedMode = localStorage.getItem('wysiwyg-mode')
+        if (savedMode !== null) {
+            this.isWysiwygMode = savedMode === 'true'
+        }
         
         // 初始化完成后，开始监听变化
         this.$nextTick(() => {
@@ -446,19 +487,31 @@ export default {
             }
         },
         setA4Width() {
+            // 获取导出内容元素 - 适配WYSIWYG模式
+            let exportElement = this.$refs.exportContent;
+            
+            if (this.isWysiwygMode && !exportElement) {
+                // 在WYSIWYG模式下，创建临时导出元素
+                const tempDiv = document.createElement('div');
+                tempDiv.className = 'export-container';
+                tempDiv.innerHTML = this.get_md(this.mdtext);
+                document.body.appendChild(tempDiv);
+                exportElement = tempDiv;
+                this._tempExportElement = tempDiv;
+            }
+            
             // 同时设置预览容器和导出容器的宽度
-            const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            const contentElement = this.$refs.md || exportElement;
             const A4_WIDTH_PX = 794;
             
             // 保存原始样式
             this.originalStyles = {
-                md: {
+                md: contentElement ? {
                     width: contentElement.style.width,
                     maxWidth: contentElement.style.maxWidth,
                     margin: contentElement.style.margin,
                     padding: contentElement.style.padding
-                },
+                } : {},
                 export: {
                     width: exportElement.style.width,
                     maxWidth: exportElement.style.maxWidth,
@@ -467,40 +520,54 @@ export default {
                 }
             };
             
-            // 设置预览容器（保持原有样式）
-            contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.margin = '0 auto';
-            contentElement.style.padding = '20px';
-            
-            // 设置导出容器（与预览保持一致）
+            // 设置导出容器样式
             exportElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.margin = '0 auto';
             exportElement.style.padding = '20px';
             
+            // 设置预览容器样式（如果可见）
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.margin = '0 auto';
+                contentElement.style.padding = '20px';
+            }
+            
             // 强制重新布局
-            contentElement.offsetHeight;
             exportElement.offsetHeight;
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.offsetHeight;
+            }
         },
 
         restoreOriginalWidth() {
             if (!this.originalStyles) return;
             
             const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            const exportElement = this.$refs.exportContent || this._tempExportElement;
             
             // 恢复预览容器样式
-            contentElement.style.width = this.originalStyles.md.width;
-            contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
-            contentElement.style.margin = this.originalStyles.md.margin;
-            contentElement.style.padding = this.originalStyles.md.padding;
+            if (contentElement && this.originalStyles.md) {
+                contentElement.style.width = this.originalStyles.md.width;
+                contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
+                contentElement.style.margin = this.originalStyles.md.margin;
+                contentElement.style.padding = this.originalStyles.md.padding;
+            }
             
             // 恢复导出容器样式
-            exportElement.style.width = this.originalStyles.export.width;
-            exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
-            exportElement.style.margin = this.originalStyles.export.margin;
-            exportElement.style.padding = this.originalStyles.export.padding;
+            if (exportElement && this.originalStyles.export) {
+                exportElement.style.width = this.originalStyles.export.width;
+                exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
+                exportElement.style.margin = this.originalStyles.export.margin;
+                exportElement.style.padding = this.originalStyles.export.padding;
+            }
+            
+            // 清理临时元素
+            if (this._tempExportElement) {
+                document.body.removeChild(this._tempExportElement);
+                this._tempExportElement = null;
+            }
             
             this.originalStyles = null;
         },
@@ -797,7 +864,7 @@ export default {
                 const pageHeight = 841.89;
                 const margin = length;
                 
-                const contentElement = this.$refs.exportContent;
+                const contentElement = this.$refs.exportContent || this._tempExportElement;
                 const contentWidth = contentElement.scrollWidth;
                 const pdfContentWidth = pageWidth - margin * 2;
                 const widthRatio = pdfContentWidth / contentWidth;
@@ -908,7 +975,7 @@ export default {
                 // 等待布局稳定
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
-                const canvas = await html2canvas(this.$refs.exportContent, {
+                const canvas = await html2canvas(this.$refs.exportContent || this._tempExportElement, {
                     scale: 2.5,
                     useCORS: true,
                     allowTaint: true,
@@ -1041,7 +1108,14 @@ export default {
             const content = md.render(mds)
             return content
         },
+        // 优化后的工具栏按钮方法 - 支持WYSIWYG模式
         add1(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1 + str1);
+                return;
+            }
+            
+            // 传统模式逻辑
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
@@ -1052,6 +1126,12 @@ export default {
             })
         },
         add2(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1);
+                return;
+            }
+            
+            // 传统模式逻辑
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
@@ -1070,11 +1150,16 @@ export default {
             })
         },
         add3(str1) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown('\n' + str1 + '\n');
+                return;
+            }
+            
+            // 传统模式逻辑
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
             var end = this.current_line()[1]
-            //console.log(end,end-start)
             this.mdtext = this.mdtext.slice(0, end + start) + '\n' + str1 + '\n' + this.mdtext.slice(end + start)
             this.$refs.input.focus();
             this.$nextTick(() => {
@@ -1083,6 +1168,12 @@ export default {
             })
         },
         add4(str1, str2) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMarkdown(str1 + str2);
+                return;
+            }
+            
+            // 传统模式逻辑
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
@@ -1092,13 +1183,82 @@ export default {
                 this.$refs.input.selectionEnd = oldloc + str1.length
             })
         },
-        opentex() {
-            this.tex = true
+        // 优先级4: 标题按钮图标 - 根据当前标题级别显示
+        getHeadingIcon() {
+            switch(this.currentHeadingLevel) {
+                case 1: return 'heading1'
+                case 2: return 'heading2'
+                case 3: return 'heading3'
+                default: return 'heading'
+            }
         },
-        closetex() {
-            this.tex = false
+        
+        getHeadingTooltip() {
+            if (this.currentHeadingLevel > 0) {
+                return `当前: H${this.currentHeadingLevel} (点击切换)`
+            }
+            return '添加标题 (H1-H6)'
+        },
+        
+        // 切换编辑模式
+        toggleEditingMode() {
+            this.isWysiwygMode = !this.isWysiwygMode
+            
+            // 保存模式选择到localStorage
+            localStorage.setItem('wysiwyg-mode', this.isWysiwygMode.toString())
+            
+            // 在模式切换后立即保存光标位置状态
+            this.$nextTick(() => {
+                if (this.isWysiwygMode) {
+                    // 切换到WYSIWYG模式时重置按钮状态
+                    this.resetButtonStates()
+                }
+            })
+        },
+        
+        // 重置按钮状态
+        resetButtonStates() {
+            this.buttonStates = {
+                bold: false,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+                code: false,
+                heading: 0
+            }
+            this.currentHeadingLevel = 0
+        },
+        
+        // 处理选择变化事件 - 优先级3: 更新按钮状态
+        handleSelectionChanged(eventData) {
+            this.buttonStates = {
+                ...this.buttonStates,
+                ...eventData.styles
+            }
+            this.currentHeadingLevel = eventData.headingLevel
+        },
+        
+        // 处理标题变化事件
+        handleHeadingChanged(level) {
+            this.currentHeadingLevel = level
+        },
+        
+        // TEX工具箱切换
+        toggleTex() {
+            this.tex = !this.tex
+        },
+        
+        // 导数符号添加
+        addDerivative() {
+            this.add4("'", "")
         },
         title() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleHeading();
+                return;
+            }
+            
+            // 传统模式逻辑
             const oldlocs = this.$refs.input.selectionStart
             const oldloc = this.$refs.input.selectionEnd
             var start = this.current_line()[0]
@@ -1115,28 +1275,6 @@ export default {
                     var enter = 2
                 }
             }
-            
-            //const oldloc = this.$refs.input.selectionEnd
-            //const list = this.mdtext.split("\n")
-            //console.log(list[list.length - 1].search('# ') != -1)
-            //var text = ''
-            //if (list[list.length - 1].slice(0, 1) == '#') {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    if (list[list.length - 1].search('###### ') != -1) {
-            //        this.mdtext = text + '#' + list[list.length - 1].slice(6)
-            //    } else {
-            //        this.mdtext = text + '#' + list[list.length - 1]
-            //    }
-            //   var enter = 0
-            //} else {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    this.mdtext = text + '# ' + list[list.length - 1]
-            //    var enter = 1
-            //}
             this.$refs.input.focus();
             this.$nextTick(() => {
                 this.$refs.input.selectionStart = oldlocs + enter
