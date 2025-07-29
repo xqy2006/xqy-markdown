@@ -53,19 +53,19 @@
         </div>
     </div>
     <div class="Box-row" id="buttons">
-        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')">img</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()">显示Tex工具箱</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()">隐藏Tex工具箱</button></td>
+        <span class="BtnGroup d-block toolbar-row primary-toolbar" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton icon="heading" tooltip="标题" @click="title()" /></td>
+            <td><IconButton icon="code-block" tooltip="代码块" @click="add1('\n\`\`\`\n')" /></td>
+            <td><IconButton icon="code" tooltip="单行代码" @click="add1('\`')" /></td>
+            <td><IconButton icon="image" tooltip="图片" @click="add4('![](',')')" /></td>
+            <td><IconButton icon="quote" tooltip="引用" @click="add2('> ')" /></td>
+            <td><IconButton icon="list" tooltip="无序列表" @click="add2('- ')" /></td>
+            <td><IconButton icon="check-list" tooltip="任务列表" @click="add2('- [ ] ')" /></td>
+            <td><IconButton icon="hash" tooltip="目录" @click="add3('[[TOC]]')" /></td>
+            <td><IconButton icon="hr" tooltip="分割线" @click="add3('------')" /></td>
+            <td><IconButton icon="function" tooltip="Tex公式" @click="add4(' $','$ ')" /></td>
+            <td><IconButton icon="eye" tooltip="显示Tex工具箱" v-if="!tex" @click="opentex()" /></td>
+            <td><IconButton icon="eye-off" tooltip="隐藏Tex工具箱" v-if="tex" @click="closetex()" /></td>
             <td><button 
                 class="btn btn-sm" 
                 :class="isWysiwygMode ? 'btn-primary' : 'btn-invisible'" 
@@ -73,15 +73,15 @@
                 {{ isWysiwygMode ? 'WYSIWYG模式' : '切换到WYSIWYG' }}
             </button></td>
         </span>
-        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')">标红</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
+        <span class="BtnGroup d-block toolbar-row" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton icon="bold" tooltip="粗体 (Ctrl+B)" @click="add1('**')" /></td>
+            <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" @click="add1('*')" /></td>
+            <td><IconButton icon="underline" tooltip="下划线" @click="add4('<u>','</u>')" /></td>
+            <td><IconButton icon="paint" tooltip="标红" @click="add4('<font color=\x22red\x22>','</font>')" /></td>
+            <td><IconButton icon="highlight" tooltip="高亮" @click="add4('<mark>','</mark>')" /></td>
+            <td><IconButton icon="strikethrough" tooltip="删除线" @click="add1('~~')" /></td>
         </span>
-        <span class="BtnGroup d-block" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+        <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
             <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
             <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
@@ -247,6 +247,99 @@ code {
     }
 }
 
+/* Enhanced mobile responsiveness for toolbar */
+@media (max-width: 768px) {
+    /* Make toolbar buttons more touch-friendly */
+    .BtnGroup {
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 8px !important;
+    }
+    
+    .BtnGroup td {
+        display: block;
+        margin: 0;
+    }
+    
+    /* Reduce margins on mobile */
+    #buttons {
+        padding: 0px 8px;
+    }
+    
+    #mytextarea {
+        padding: 5px 8px 16px;
+    }
+    
+    /* Make editor full width on mobile */
+    .wysiwyg-editor {
+        font-size: 16px; /* Prevent zoom on iOS */
+        line-height: 1.5;
+    }
+    
+    /* Responsive export container */
+    .export-container {
+        padding: 15px;
+    }
+}
+
+/* Extra small screens (phones) */
+@media (max-width: 480px) {
+    /* Collapsible toolbar for very small screens */
+    .toolbar-row {
+        margin-bottom: 8px;
+    }
+    
+    .toolbar-row:not(.primary-toolbar) {
+        display: none;
+    }
+    
+    .toolbar-row.expanded {
+        display: block;
+    }
+    
+    /* Larger touch targets */
+    .icon-button {
+        min-width: 44px !important;
+        min-height: 44px !important;
+        margin: 2px;
+    }
+    
+    /* Compact layout */
+    .Box {
+        margin: 10px 8px !important;
+    }
+    
+    .Box-header {
+        padding: 12px;
+        font-size: 14px;
+    }
+    
+    /* Hide secondary UI elements on very small screens */
+    .setting-group small {
+        display: none;
+    }
+    
+    /* Optimize editor height */
+    .wysiwyg-editor, 
+    textarea.form-control {
+        min-height: 200px;
+        font-size: 16px; /* Prevent zoom */
+    }
+}
+
+/* Landscape orientation optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .wysiwyg-editor,
+    textarea.form-control {
+        min-height: 150px;
+    }
+    
+    .toolbar-row {
+        margin-bottom: 4px;
+    }
+}
+
 @keyframes octocat-wave {
 
     0%,
@@ -310,10 +403,12 @@ import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
 import WysiwygEditor from './components/WysiwygEditor.vue'
+import IconButton from './components/IconButton.vue'
 
 export default {
     components: {
-        WysiwygEditor
+        WysiwygEditor,
+        IconButton
     },
     data() {
         return {
