@@ -50,6 +50,14 @@
                 <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" style="width: 80px;" />
                 <small class="text-gray">(1.0 = 标准A4宽度)</small>
             </div>
+            <div class="setting-group">
+                <label>PDF导出模式：</label>
+                <select v-model="pdfExportMode" class="form-control input-sm" style="width: 150px;">
+                    <option value="svg">智能矢量</option>
+                    <option value="screenshot">截图</option>
+                </select>
+                <small class="text-gray">(智能矢量：推荐，支持中文和完美样式保留)</small>
+            </div>
         </div>
     </div>
     <div class="Box-row" id="buttons">
@@ -281,6 +289,62 @@ code {
     box-shadow: none !important;
     background: transparent !important;
 }
+
+/* PDF导出专用样式 - 确保代码和数学公式正确显示 */
+.export-container code:not(pre code) {
+    background-color: rgba(175, 184, 193, 0.2) !important;
+    color: rgb(36, 41, 47) !important;
+    padding: 0.2em 0.4em !important;
+    border-radius: 6px !important;
+    font-size: 85% !important;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace !important;
+}
+
+.export-container pre.hljs {
+    background-color: #f6f8fa !important;
+    border: 1px solid #d0d7de !important;
+    border-radius: 6px !important;
+    padding: 16px !important;
+    overflow: auto !important;
+    font-size: 14px !important;
+    line-height: 1.45 !important;
+    margin: 16px 0 !important;
+}
+
+.export-container pre.hljs code {
+    background: transparent !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+}
+
+.export-container pre.hljs li {
+    margin-top: 0 !important;
+    margin-left: 15px !important;
+    list-style-type: decimal !important;
+    color: #24292f !important;
+}
+
+/* 改进KaTeX数学公式在PDF中的显示 */
+.export-container .katex {
+    font-family: KaTeX_Main, "Times New Roman", serif !important;
+    font-size: inherit !important;
+}
+
+.export-container .katex-display {
+    display: block !important;
+    text-align: center !important;
+    margin: 1em 0 !important;
+}
+
+.export-container .katex:not(.katex-display) {
+    display: inline-block !important;
+}
+
+/* 确保数学公式元素可见 */
+.export-container .katex * {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
 </style>
 
 <script>
@@ -288,6 +352,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import * as PDFLib from 'pdf-lib';
 import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
 import emoji from 'markdown-it-emoji'
@@ -311,10 +376,13 @@ export default {
             sum: 1,
             tex:false,
             exportScale: 1.0, // 新增：导出缩放倍率
+            pdfExportMode: 'svg', // 新增：PDF导出模式，默认使用智能矢量
             originalStyles: null, // 保存原始样式
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
+            chineseFallback: false, // 中文字体支持标记
+            chineseWarningShown: false, // 中文警告显示标记
         }
     },
     created(){
@@ -360,6 +428,14 @@ export default {
                     this.debouncedSave();
                 }
             }
+        },
+        // 监听 PDF导出模式变化，自动保存
+        pdfExportMode: {
+            handler() {
+                if (!this.isInitializing) {
+                    this.debouncedSave();
+                }
+            }
         }
     },
 
@@ -375,6 +451,7 @@ export default {
                     const data = JSON.parse(savedData);
                     this.mdtext = data.content || '';
                     this.filename = data.filename || '';
+                    this.pdfExportMode = data.pdfExportMode || 'vector';
                     
                     if (this.mdtext || this.filename) {
                         this.showSaveStatus('已恢复上次编辑的内容');
@@ -391,6 +468,7 @@ export default {
                 const dataToSave = {
                     content: this.mdtext,
                     filename: this.filename,
+                    pdfExportMode: this.pdfExportMode,
                     lastSaved: new Date().toISOString()
                 };
                 
@@ -442,6 +520,7 @@ export default {
             if (confirm('确定要清除所有内容吗？这将清空文件名和Markdown内容。')) {
                 this.mdtext = '';
                 this.filename = '';
+                this.pdfExportMode = 'vector';
                 // 清除内容后会自动保存空内容
             }
         },
@@ -782,8 +861,427 @@ export default {
             return bestBreakPoint;
         },
 
-        // 改进的PDF导出函数
+
+        // 主PDF导出方法 - 根据模式选择导出方式
         async to_pdf(length = 20) {
+            if (this.pdfExportMode === 'svg') {
+                await this.to_pdf_svg(length);
+            } else {
+                await this.to_pdf_screenshot(length);
+            }
+        },
+
+        // 智能矢量PDF导出 - 使用真正的文本绘制保持文本可选择
+        async to_pdf_svg(length = 20) {
+            this.pdfdown = true;
+            this.count = 0;
+
+            try {
+                console.log('=== 智能矢量PDF导出开始 ===');
+                
+                // 设置A4宽度并等待布局稳定
+                this.setA4Width();
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                // 使用pdf-lib进行真正的矢量化文本绘制
+                const { PDFDocument, rgb, StandardFonts } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+                
+                const pageWidth = 595.28;
+                const pageHeight = 841.89;
+                const margin = length;
+
+                const contentElement = this.$refs.exportContent;
+                const contentWidth = contentElement.scrollWidth;
+                const pdfContentWidth = pageWidth - margin * 2;
+                const widthRatio = pdfContentWidth / contentWidth;
+                const idealPageHeightInPixels = (pageHeight - margin * 2) / widthRatio;
+
+                console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
+                console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
+
+                // 使用现有分页逻辑
+                const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, this.exportScale);
+                this.sum = breakPoints.length - 1;
+
+                console.log('智能矢量模式页面分隔点:', breakPoints);
+
+                // 嵌入字体
+                const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+                const monoFont = await pdfDoc.embedFont(StandardFonts.Courier);
+
+                // 逐页处理，使用真正的文本绘制
+                for (let i = 0; i < breakPoints.length - 1; i++) {
+                    this.count = i + 1;
+                    
+                    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+
+                    const start = breakPoints[i];
+                    const end = breakPoints[i + 1];
+                    const pageHeightPx = end - start;
+
+                    console.log(`处理第 ${i + 1} 页，范围: ${start} - ${end}, 高度: ${pageHeightPx}`);
+
+                    if (pageHeightPx <= 0) {
+                        console.warn(`页面 ${i + 1} 高度为 ${pageHeightPx}，跳过`);
+                        continue;
+                    }
+
+                    // 提取页面内容并转换为可绘制的文本元素
+                    const pageElements = await this.extractPageElements(contentElement, start, pageHeightPx);
+                    
+                    // 绘制元素到PDF页面
+                    await this.renderElementsToPDF(page, pageElements, {
+                        regularFont,
+                        boldFont,
+                        italicFont,
+                        monoFont,
+                        widthRatio,
+                        margin,
+                        pageHeight,
+                        startOffset: start
+                    });
+
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                // 保存PDF
+                const pdfBytes = await pdfDoc.save();
+                const filename = this.filename ? `${this.filename}.pdf` : 'markdown-export.pdf';
+                
+                // 下载文件
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                console.log('=== 智能矢量PDF导出完成 ===');
+
+            } catch (error) {
+                console.error('智能矢量模式PDF导出失败:', error);
+                alert('智能矢量模式PDF导出失败: ' + error.message);
+            } finally {
+                this.pdfdown = false;
+                this.count = 0;
+                this.sum = 1;
+                this.restoreOriginalWidth();
+            }
+        },
+
+        // 提取页面元素用于真正的矢量化渲染
+        async extractPageElements(contentElement, offsetTop, height) {
+            console.log(`提取页面元素: offsetTop=${offsetTop}, height=${height}`);
+            
+            // 创建临时容器以隔离页面内容
+            const pageContainer = document.createElement('div');
+            pageContainer.style.position = 'absolute';
+            pageContainer.style.left = '-10000px';
+            pageContainer.style.top = '0';
+            pageContainer.style.width = contentElement.offsetWidth + 'px';
+            pageContainer.style.height = height + 'px';
+            pageContainer.style.overflow = 'hidden';
+            pageContainer.style.backgroundColor = '#ffffff';
+            
+            document.body.appendChild(pageContainer);
+
+            // 克隆内容并定位到正确位置
+            const clonedContent = contentElement.cloneNode(true);
+            clonedContent.style.position = 'relative';
+            clonedContent.style.top = -offsetTop + 'px';
+            clonedContent.style.left = '0';
+            clonedContent.style.margin = '0';
+            clonedContent.style.padding = getComputedStyle(contentElement).padding;
+            
+            pageContainer.appendChild(clonedContent);
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            const elements = [];
+            
+            try {
+                // 遍历所有可见元素并提取其样式和内容
+                const walker = document.createTreeWalker(
+                    pageContainer,
+                    NodeFilter.SHOW_ELEMENT,
+                    null,
+                    false
+                );
+
+                const processedElements = [pageContainer];
+                let node;
+                while (node = walker.nextNode()) {
+                    processedElements.push(node);
+                }
+
+                processedElements.forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    const containerRect = pageContainer.getBoundingClientRect();
+                    
+                    // 跳过不可见或无内容的元素
+                    if (rect.width === 0 || rect.height === 0) return;
+                    
+                    const relativeTop = rect.top - containerRect.top;
+                    const relativeLeft = rect.left - containerRect.left;
+                    
+                    // 只处理在页面范围内的元素
+                    if (relativeTop >= 0 && relativeTop < height) {
+                        const style = getComputedStyle(el);
+                        const textContent = el.textContent?.trim();
+                        
+                        if (textContent && el.children.length === 0) { // 只处理叶子文本节点
+                            elements.push({
+                                type: this.getElementType(el),
+                                text: textContent,
+                                x: relativeLeft,
+                                y: relativeTop,
+                                width: rect.width,
+                                height: rect.height,
+                                fontSize: parseFloat(style.fontSize) || 14,
+                                fontWeight: style.fontWeight,
+                                fontStyle: style.fontStyle,
+                                color: style.color,
+                                backgroundColor: style.backgroundColor,
+                                textDecoration: style.textDecoration,
+                                fontFamily: style.fontFamily,
+                                lineHeight: parseFloat(style.lineHeight) || rect.height,
+                                tagName: el.tagName.toLowerCase()
+                            });
+                        }
+                    }
+                });
+
+                return elements.sort((a, b) => a.y - b.y);
+                
+            } finally {
+                try {
+                    document.body.removeChild(pageContainer);
+                } catch (e) {
+                    console.warn('清理临时容器失败:', e);
+                }
+            }
+        },
+
+        // 确定元素类型
+        getElementType(element) {
+            const tagName = element.tagName.toLowerCase();
+            
+            if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+                return 'heading';
+            } else if (tagName === 'code' && !element.closest('pre')) {
+                return 'inline-code';
+            } else if (element.closest('pre')) {
+                return 'code-block';
+            } else if (element.closest('.katex')) {
+                return 'math';
+            } else if (['strong', 'b'].includes(tagName)) {
+                return 'bold';
+            } else if (['em', 'i'].includes(tagName)) {
+                return 'italic';
+            } else {
+                return 'text';
+            }
+        },
+
+        // 将元素渲染到PDF页面
+        async renderElementsToPDF(page, elements, options) {
+            const { regularFont, boldFont, italicFont, monoFont, widthRatio, margin, pageHeight, startOffset } = options;
+            
+            console.log(`渲染 ${elements.length} 个元素到PDF页面`);
+            
+            for (const element of elements) {
+                try {
+                    // 选择合适的字体
+                    let font = regularFont;
+                    if (element.type === 'code-block' || element.type === 'inline-code') {
+                        font = monoFont;
+                    } else if (element.fontWeight === 'bold' || element.fontWeight === '700' || element.type === 'bold' || element.type === 'heading') {
+                        font = boldFont;
+                    } else if (element.fontStyle === 'italic' || element.type === 'italic') {
+                        font = italicFont;
+                    }
+
+                    // 调整字体大小和位置
+                    const fontSize = Math.max(8, element.fontSize * widthRatio * 0.75);
+                    const x = margin + element.x * widthRatio;
+                    const y = pageHeight - margin - (element.y + element.fontSize) * widthRatio;
+                    
+                    // 解析颜色
+                    const color = this.parseColor(element.color);
+                    
+                    // 绘制背景（适用于内联代码）
+                    if (element.type === 'inline-code' || element.type === 'code-block') {
+                        const bgColor = rgb(0.97, 0.98, 0.99); // 浅灰色背景
+                        const padding = 3;
+                        
+                        page.drawRectangle({
+                            x: x - padding,
+                            y: y - padding,
+                            width: element.width * widthRatio + padding * 2,
+                            height: element.height * widthRatio + padding * 2,
+                            color: bgColor,
+                        });
+                    }
+                    
+                    // 绘制文本
+                    const textLines = this.wrapText(element.text, font, fontSize, element.width * widthRatio);
+                    let currentY = y;
+                    
+                    for (const line of textLines) {
+                        if (currentY < margin) break; // 防止超出页面底部
+                        
+                        page.drawText(line, {
+                            x: x,
+                            y: currentY,
+                            size: fontSize,
+                            font: font,
+                            color: color,
+                        });
+                        
+                        currentY -= fontSize * 1.2; // 行间距
+                    }
+                    
+                } catch (elementError) {
+                    console.warn('渲染元素失败:', elementError, element);
+                }
+            }
+        },
+
+        // 解析CSS颜色到pdf-lib rgb格式
+        parseColor(colorString) {
+            const { rgb } = PDFLib;
+            
+            if (!colorString || colorString === 'initial' || colorString === 'inherit') {
+                return rgb(0, 0, 0); // 默认黑色
+            }
+            
+            // 处理rgb/rgba格式
+            const rgbMatch = colorString.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgbMatch) {
+                const r = parseInt(rgbMatch[1]) / 255;
+                const g = parseInt(rgbMatch[2]) / 255;
+                const b = parseInt(rgbMatch[3]) / 255;
+                return rgb(r, g, b);
+            }
+            
+            // 处理十六进制格式
+            const hexMatch = colorString.match(/^#([0-9a-f]{6}|[0-9a-f]{3})$/i);
+            if (hexMatch) {
+                let hex = hexMatch[1];
+                if (hex.length === 3) {
+                    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+                }
+                const r = parseInt(hex.substr(0, 2), 16) / 255;
+                const g = parseInt(hex.substr(2, 2), 16) / 255;
+                const b = parseInt(hex.substr(4, 2), 16) / 255;
+                return rgb(r, g, b);
+            }
+            
+            // 处理命名颜色
+            const colorMap = {
+                'black': rgb(0, 0, 0),
+                'white': rgb(1, 1, 1),
+                'red': rgb(1, 0, 0),
+                'green': rgb(0, 0.5, 0),
+                'blue': rgb(0, 0, 1),
+                'gray': rgb(0.5, 0.5, 0.5),
+                'grey': rgb(0.5, 0.5, 0.5),
+            };
+            
+            return colorMap[colorString.toLowerCase()] || rgb(0, 0, 0);
+        },
+
+        // 文本换行处理
+        wrapText(text, font, fontSize, maxWidth) {
+            if (!text) return [''];
+            
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+            
+            for (const word of words) {
+                const testLine = currentLine ? `${currentLine} ${word}` : word;
+                const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+                
+                if (testWidth <= maxWidth) {
+                    currentLine = testLine;
+                } else {
+                    if (currentLine) {
+                        lines.push(currentLine);
+                        currentLine = word;
+                    } else {
+                        // 单词太长，强制换行
+                        lines.push(word);
+                    }
+                }
+            }
+            
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            return lines.length > 0 ? lines : [''];
+        },
+
+        // Canvas回退方法 - 当SVG嵌入失败时使用
+        async createPageCanvas(contentElement, offsetTop, height) {
+            console.log(`创建页面Canvas: offsetTop=${offsetTop}, height=${height}`);
+            
+            // 创建临时容器
+            const pageContainer = document.createElement('div');
+            pageContainer.style.position = 'absolute';
+            pageContainer.style.left = '-10000px';
+            pageContainer.style.top = '0';
+            pageContainer.style.width = contentElement.offsetWidth + 'px';
+            pageContainer.style.height = height + 'px';
+            pageContainer.style.overflow = 'hidden';
+            pageContainer.style.backgroundColor = '#ffffff';
+            pageContainer.className = contentElement.className;
+            
+            document.body.appendChild(pageContainer);
+
+            const clonedContent = contentElement.cloneNode(true);
+            clonedContent.style.position = 'relative';
+            clonedContent.style.top = -offsetTop + 'px';
+            clonedContent.style.left = '0';
+            clonedContent.style.margin = '0';
+            clonedContent.style.padding = getComputedStyle(contentElement).padding;
+            
+            pageContainer.appendChild(clonedContent);
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            try {
+                const canvas = await html2canvas(pageContainer, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: 2,
+                    width: pageContainer.offsetWidth,
+                    height: pageContainer.offsetHeight,
+                    scrollX: 0,
+                    scrollY: 0,
+                    windowWidth: pageContainer.offsetWidth,
+                    windowHeight: pageContainer.offsetHeight,
+                    backgroundColor: '#ffffff',
+                    letterRendering: true,
+                    logging: false
+                });
+                return canvas;
+            } finally {
+                try {
+                    document.body.removeChild(pageContainer);
+                } catch (e) {
+                    console.warn('清理Canvas容器失败:', e);
+                }
+            }
+        },
+
+
+
+        // 截图方式PDF导出（原有方法）
+        async to_pdf_screenshot(length = 20) {
             this.pdfdown = true;
             this.count = 0;
             
