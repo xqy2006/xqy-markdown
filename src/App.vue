@@ -50,6 +50,14 @@
                 <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" style="width: 80px;" />
                 <small class="text-gray">(1.0 = 标准A4宽度)</small>
             </div>
+            <div class="setting-group">
+                <label>PDF导出模式：</label>
+                <select v-model="pdfExportMode" class="form-control input-sm" style="width: 120px;">
+                    <option value="vectorized">矢量化(推荐)</option>
+                    <option value="image">图像模式</option>
+                </select>
+                <small class="text-gray">(矢量化支持文本选择)</small>
+            </div>
         </div>
     </div>
     <div class="Box-row" id="buttons">
@@ -203,7 +211,7 @@ code {
         animation: octocat-wave 560ms ease-in-out
     }
 
-    /* 移动端导出设置布局：分两行显示 */
+    /* 移动端导出设置布局：分多行显示 */
     .export-settings {
         flex-direction: column;
         align-items: stretch;
@@ -225,7 +233,7 @@ code {
         flex: 1;
     }
 
-    .setting-group input[type="number"] {
+    .setting-group input[type="number"], .setting-group select {
         width: 60px !important;
     }
 
@@ -288,6 +296,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import html2pdf from 'html2pdf.js';
 import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
 import emoji from 'markdown-it-emoji'
@@ -304,6 +313,7 @@ export default {
             filename: '',
             pdfdown: false,
             pngdown: false,
+            jpgdown: false, // 修复：添加缺失的属性
             mddown: false,
             htmldown: false,
             mdup: false,
@@ -311,6 +321,7 @@ export default {
             sum: 1,
             tex:false,
             exportScale: 1.0, // 新增：导出缩放倍率
+            pdfExportMode: 'vectorized', // 新增：PDF导出模式，'vectorized' 或 'image'
             originalStyles: null, // 保存原始样式
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
@@ -360,6 +371,15 @@ export default {
                     this.debouncedSave();
                 }
             }
+        },
+        // 监听 pdfExportMode 变化，自动保存
+        pdfExportMode: {
+            handler() {
+                // 只在非初始化状态下触发保存
+                if (!this.isInitializing) {
+                    this.debouncedSave();
+                }
+            }
         }
     },
 
@@ -375,6 +395,7 @@ export default {
                     const data = JSON.parse(savedData);
                     this.mdtext = data.content || '';
                     this.filename = data.filename || '';
+                    this.pdfExportMode = data.pdfExportMode || 'vectorized';
                     
                     if (this.mdtext || this.filename) {
                         this.showSaveStatus('已恢复上次编辑的内容');
@@ -391,6 +412,7 @@ export default {
                 const dataToSave = {
                     content: this.mdtext,
                     filename: this.filename,
+                    pdfExportMode: this.pdfExportMode,
                     lastSaved: new Date().toISOString()
                 };
                 
@@ -782,8 +804,106 @@ export default {
             return bestBreakPoint;
         },
 
+        // 新的矢量化PDF导出方法
+        async to_pdf_vectorized() {
+            this.pdfdown = true;
+            this.count = 0;
+            this.sum = 1;
+            
+            try {
+                // 设置A4宽度并等待布局稳定
+                this.setA4Width();
+                await new Promise(resolve => setTimeout(resolve, 800));
+                
+                const contentElement = this.$refs.exportContent;
+                const filename = (this.filename || 'undefined') + '.pdf';
+                
+                console.log('=== 矢量化PDF导出开始 ===');
+                
+                // 配置html2pdf选项
+                const opt = {
+                    margin: 20,
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { 
+                        scale: 2,
+                        useCORS: true,
+                        allowTaint: true,
+                        backgroundColor: '#ffffff',
+                        logging: false
+                    },
+                    jsPDF: { 
+                        unit: 'pt', 
+                        format: 'a4', 
+                        orientation: 'portrait',
+                        compress: true 
+                    },
+                    pagebreak: { 
+                        mode: ['avoid-all', 'css', 'legacy'],
+                        before: '.page-break-before',
+                        after: '.page-break-after',
+                        avoid: ['img', 'table', 'tr', 'td']
+                    }
+                };
+                
+                // 添加CSS分页符样式到内容中（临时）
+                const style = document.createElement('style');
+                style.textContent = `
+                    @media print {
+                        h1, h2, h3 { 
+                            page-break-after: avoid; 
+                            break-after: avoid;
+                        }
+                        pre, blockquote, table { 
+                            page-break-inside: avoid; 
+                            break-inside: avoid;
+                        }
+                        img { 
+                            page-break-inside: avoid; 
+                            break-inside: avoid;
+                        }
+                        .page-break-before { 
+                            page-break-before: always !important; 
+                            break-before: page !important;
+                        }
+                        .page-break-after { 
+                            page-break-after: always !important; 
+                            break-after: page !important;
+                        }
+                    }
+                `;
+                contentElement.appendChild(style);
+                
+                // 使用html2pdf生成矢量化PDF
+                await html2pdf().set(opt).from(contentElement).save();
+                
+                this.count = 1;
+                console.log('=== 矢量化PDF导出完成 ===');
+                
+                // 移除临时样式
+                contentElement.removeChild(style);
+                
+            } catch (error) {
+                console.error('矢量化PDF导出失败:', error);
+                alert('矢量化PDF导出失败，请尝试使用图像模式导出。错误信息：' + error.message);
+            } finally {
+                this.restoreOriginalWidth();
+                this.pdfdown = false;
+            }
+        },
+
         // 改进的PDF导出函数
         async to_pdf(length = 20) {
+            // 根据选择的模式调用不同的导出方法
+            if (this.pdfExportMode === 'vectorized') {
+                return await this.to_pdf_vectorized();
+            } else {
+                return await this.to_pdf_image(length);
+            }
+        },
+
+        // 原有的图像模式PDF导出方法（重命名）
+        async to_pdf_image(length = 20) {
             this.pdfdown = true;
             this.count = 0;
             
