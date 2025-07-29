@@ -1034,13 +1034,23 @@ export default {
             return bestBreakPoint;
         },
 
-        // 改进的PDF导出函数
+        // Export functionality improvements for WYSIWYG mode
         async to_pdf(length = 20) {
-            this.pdfdown = true;
-            this.count = 0;
+            const wasWysiwygMode = this.isWysiwygMode;
             
             try {
-                // 设置A4宽度并等待布局稳定
+                // Switch to normal mode for export if in WYSIWYG mode
+                if (wasWysiwygMode) {
+                    this.isWysiwygMode = false;
+                    await this.$nextTick();
+                    // Wait for mode switch to complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                this.pdfdown = true;
+                this.count = 0;
+                
+                // Set A4 width and wait for layout to stabilize
                 this.setA4Width();
                 await new Promise(resolve => setTimeout(resolve, 800));
                 
@@ -1060,19 +1070,19 @@ export default {
                 console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
                 console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
                 
-                // 使用修复后的智能分页算法
+                // Use improved smart pagination algorithm
                 const targetScale = 2.5;
                 const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
                 this.sum = breakPoints.length - 1;
                 
-                // 预先计算所有页面的最安全缩放比例
+                // Pre-calculate the safest scale for all pages
                 const maxCanvasSize = 17000;
                 let globalScale = targetScale;
                 
                 for (let i = 0; i < breakPoints.length - 1; i++) {
                     const currentPageHeight = breakPoints[i + 1] - breakPoints[i];
                     
-                    // 检查每页的canvas限制
+                    // Check canvas limits for each page
                     const maxScaleForWidth = maxCanvasSize / contentWidth;
                     const maxScaleForHeight = maxCanvasSize / currentPageHeight;
                     const maxSafeScale = Math.min(maxScaleForWidth, maxScaleForHeight) * 0.95;
@@ -1086,7 +1096,7 @@ export default {
                 console.log(`最终使用全局缩放比例: ${globalScale}`);
                 console.log(`智能分页完成，共${this.sum}页`);
                 
-                // 渲染每一页
+                // Render each page
                 for (let i = 0; i < breakPoints.length - 1; i++) {
                     const startY = breakPoints[i];
                     const endY = breakPoints[i + 1];
@@ -1115,7 +1125,7 @@ export default {
                             pdf.addPage();
                         }
                         
-                        // 确保图像完全适配PDF页面
+                        // Ensure image fits completely within PDF page
                         const maxPdfImageHeight = pageHeight - margin * 2;
                         const finalImageHeight = Math.min(pdfImageHeight, maxPdfImageHeight);
                         
@@ -1148,17 +1158,35 @@ export default {
             } finally {
                 this.restoreOriginalWidth();
                 this.pdfdown = false;
+                
+                // Restore WYSIWYG mode if it was originally enabled
+                if (wasWysiwygMode) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    this.isWysiwygMode = true;
+                    await this.$nextTick();
+                    this.$refs.wysiwygEditor?.focus();
+                }
             }
         },
 
         async to_png() {
-            this.pngdown = true;
+            const wasWysiwygMode = this.isWysiwygMode;
             
             try {
-                // 设置A4宽度
+                // Switch to normal mode for export if in WYSIWYG mode
+                if (wasWysiwygMode) {
+                    this.isWysiwygMode = false;
+                    await this.$nextTick();
+                    // Wait for mode switch to complete
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                this.pngdown = true;
+                
+                // Set A4 width
                 this.setA4Width();
                 
-                // 等待布局稳定
+                // Wait for layout to stabilize
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
                 // Get the proper export element (either existing or temporary)
@@ -1177,6 +1205,14 @@ export default {
             } finally {
                 this.restoreOriginalWidth();
                 this.pngdown = false;
+                
+                // Restore WYSIWYG mode if it was originally enabled
+                if (wasWysiwygMode) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    this.isWysiwygMode = true;
+                    await this.$nextTick();
+                    this.$refs.wysiwygEditor?.focus();
+                }
             }
         },
 
