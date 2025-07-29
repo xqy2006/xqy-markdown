@@ -1412,27 +1412,24 @@ export default {
     },
 
     insertNeutralFormattingSpan(formatType, range) {
-      // Insert a span that neutralizes the current formatting
+      // Insert a span that neutralizes the current formatting more effectively
       const span = document.createElement('span');
       
-      // Apply neutral styles to break inheritance
+      // Apply neutral styles with !important to override inheritance
       switch (formatType) {
         case 'bold':
-          span.style.fontWeight = 'normal';
+          span.style.cssText = 'font-weight: normal !important;';
           break;
         case 'italic':
-          span.style.fontStyle = 'normal';
+          span.style.cssText = 'font-style: normal !important;';
           break;
         case 'underline':
-          span.style.textDecoration = 'none';
+          span.style.cssText = 'text-decoration: none !important;';
           break;
         case 'strikethrough':
-          span.style.textDecoration = 'none';
+          span.style.cssText = 'text-decoration: none !important;';
           break;
       }
-      
-      // Add important styles to override inheritance more effectively
-      span.style.cssText += ' !important';
       
       // Add a zero-width space to make it immediately editable
       span.appendChild(document.createTextNode('\u200B'));
@@ -1468,23 +1465,23 @@ export default {
       // Insert a span with the desired formatting
       const span = document.createElement('span');
       
-      // Apply formatting styles
+      // Apply formatting styles with !important to ensure they override inheritance
       switch (formatType) {
         case 'bold':
-          span.style.fontWeight = 'bold';
+          span.style.cssText = 'font-weight: bold !important;';
           break;
         case 'italic':
-          span.style.fontStyle = 'italic';
+          span.style.cssText = 'font-style: italic !important;';
           break;
         case 'underline':
-          span.style.textDecoration = 'underline';
+          span.style.cssText = 'text-decoration: underline !important;';
           break;
         case 'strikethrough':
-          span.style.textDecoration = 'line-through';
+          span.style.cssText = 'text-decoration: line-through !important;';
           break;
       }
       
-      // Add a zero-width space to make it editable
+      // Add a zero-width space to make it immediately editable
       span.appendChild(document.createTextNode('\u200B'));
       
       range.insertNode(span);
@@ -1497,6 +1494,21 @@ export default {
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(newRange);
+      
+      // Add attribute to help with style detection
+      span.setAttribute('data-format-applied', formatType);
+      
+      // Set up event to clean and merge when user types
+      const handleInput = (event) => {
+        // When user types, clean up the zero-width space
+        if (span.textContent.length > 1) {
+          span.textContent = span.textContent.replace('\u200B', '');
+          span.removeEventListener('input', handleInput);
+        }
+      };
+      
+      span.addEventListener('input', handleInput);
+      this.$refs.editor.addEventListener('input', handleInput, { once: true });
     },
 
     isSimpleToggle() {
