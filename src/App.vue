@@ -54,16 +54,16 @@
     </div>
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block toolbar-row primary-toolbar" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><IconButton icon="heading" tooltip="标题" @click="title()" /></td>
-            <td><IconButton icon="code-block" tooltip="代码块" @click="add1('\n\`\`\`\n')" /></td>
-            <td><IconButton icon="code" tooltip="单行代码" @click="add1('\`')" /></td>
-            <td><IconButton icon="image" tooltip="图片" @click="add4('![](',')')" /></td>
-            <td><IconButton icon="quote" tooltip="引用" @click="add2('> ')" /></td>
-            <td><IconButton icon="list" tooltip="无序列表" @click="add2('- ')" /></td>
-            <td><IconButton icon="check-list" tooltip="任务列表" @click="add2('- [ ] ')" /></td>
-            <td><IconButton icon="hash" tooltip="目录" @click="add3('[[TOC]]')" /></td>
-            <td><IconButton icon="hr" tooltip="分割线" @click="add3('------')" /></td>
-            <td><IconButton icon="function" tooltip="Tex公式" @click="add4(' $','$ ')" /></td>
+            <td><IconButton :icon="currentHeadingIcon" tooltip="标题" @click="handleHeading()" /></td>
+            <td><IconButton icon="code-block" tooltip="代码块" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="code" tooltip="单行代码" :variant="codeButtonClass.replace('btn-', '')" @click="handleCode()" /></td>
+            <td><IconButton icon="image" tooltip="图片" @click="handleImage()" /></td>
+            <td><IconButton icon="quote" tooltip="引用" @click="handleQuote()" /></td>
+            <td><IconButton icon="list" tooltip="无序列表" @click="handleList()" /></td>
+            <td><IconButton icon="check-list" tooltip="任务列表" @click="handleTaskList()" /></td>
+            <td><IconButton icon="hash" tooltip="目录" @click="handleTOC()" /></td>
+            <td><IconButton icon="hr" tooltip="分割线" @click="handleHR()" /></td>
+            <td><IconButton icon="function" tooltip="Tex公式" @click="handleMath()" /></td>
             <td><IconButton icon="eye" tooltip="显示Tex工具箱" v-if="!tex" @click="opentex()" /></td>
             <td><IconButton icon="eye-off" tooltip="隐藏Tex工具箱" v-if="tex" @click="closetex()" /></td>
             <td><button 
@@ -74,32 +74,30 @@
             </button></td>
         </span>
         <span class="BtnGroup d-block toolbar-row" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><IconButton icon="bold" tooltip="粗体 (Ctrl+B)" @click="add1('**')" /></td>
-            <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" @click="add1('*')" /></td>
-            <td><IconButton icon="underline" tooltip="下划线" @click="add4('<u>','</u>')" /></td>
-            <td><IconButton icon="paint" tooltip="标红" @click="add4('<font color=\x22red\x22>','</font>')" /></td>
-            <td><IconButton icon="highlight" tooltip="高亮" @click="add4('<mark>','</mark>')" /></td>
-            <td><IconButton icon="strikethrough" tooltip="删除线" @click="add1('~~')" /></td>
+            <td><IconButton icon="bold" tooltip="粗体 (Ctrl+B)" :variant="boldButtonClass.replace('btn-', '')" @click="handleBold()" /></td>
+            <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" :variant="italicButtonClass.replace('btn-', '')" @click="handleItalic()" /></td>
+            <td><IconButton icon="underline" tooltip="下划线" :variant="underlineButtonClass.replace('btn-', '')" @click="handleUnderline()" /></td>
+            <td><IconButton icon="paint" tooltip="标红" @click="handleColorText('red')" /></td>
+            <td><IconButton icon="highlight" tooltip="高亮" @click="handleHighlight()" /></td>
+            <td><IconButton icon="strikethrough" tooltip="删除线" :variant="strikethroughButtonClass.replace('btn-', '')" @click="handleStrikethrough()" /></td>
         </span>
         <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><IconButton icon="plus" tooltip="加号" @click="add4('+','')" /></td>
-            <td><IconButton icon="minus" tooltip="减号" @click="add4('-','')" /></td>
-            <td><IconButton icon="times" tooltip="点乘" @click="add4('\\cdot','')" /></td>
-            <td><IconButton icon="times" tooltip="叉乘" @click="add4('\\times','')" /></td>
-            <td><IconButton icon="divide" tooltip="除法" @click="add4('\\div','')" /></td>
-            <td><IconButton icon="cases" tooltip="换行" @click="add4('\\\\','')" /></td>
+            <td><IconButton icon="plus" tooltip="加号 +" @click="add4('+','')" /></td>
+            <td><IconButton icon="minus" tooltip="减号 -" @click="add4('-','')" /></td>
+            <td><IconButton icon="times" tooltip="乘号 ×" @click="add4('\\times','')" /></td>
+            <td><IconButton icon="divide" tooltip="除号 ÷" @click="add4('\\div','')" /></td>
             <td><IconButton icon="fraction" tooltip="分数" @click="add4('\\frac{','}{}')" /></td>
             <td><IconButton icon="power" tooltip="上标" @click="add4('^{','}')" /></td>
             <td><IconButton icon="subscript" tooltip="下标" @click="add4('_{','}')" /></td>
-            <td><IconButton icon="sqrt" tooltip="根号" @click="add4('\\sqrt[]{','}')" /></td>
+            <td><IconButton icon="sqrt" tooltip="根号" @click="add4('\\sqrt{','}')" /></td>
             <td><IconButton icon="vector" tooltip="向量" @click="add4('\\overrightarrow{','}')" /></td>
-            <td><IconButton icon="arc" tooltip="弧" @click="add4('\\overset{\\frown}{','}')" /></td>
-            <td><IconButton icon="derivative" tooltip="导数" @click="addDerivative" /></td>
-            <td><IconButton icon="sum" tooltip="求和" @click="add4('\\sum_{','}^{} {}')" /></td>
-            <td><IconButton icon="product" tooltip="求积" @click="add4('\\prod_{','}^{} {}')" /></td>
-            <td><IconButton icon="limit" tooltip="极限" @click="add4('\\lim_{n \\to \\infty}{','}')" /></td>
-            <td><IconButton icon="integral" tooltip="积分" @click="add4('\\int_{}^{} {','}\\, dx')" /></td>
-            <td><IconButton icon="cases" tooltip="大括号" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')" /></td>
+            <td><IconButton icon="sum" tooltip="求和 Σ" @click="add4('\\sum_{','}^{} {}')" /></td>
+            <td><IconButton icon="product" tooltip="求积 Π" @click="add4('\\prod_{','}^{} {}')" /></td>
+            <td><IconButton icon="limit" tooltip="极限" @click="add4('\\lim_{x \\to ','}{}')" /></td>
+            <td><IconButton icon="integral" tooltip="积分 ∫" @click="add4('\\int_{','}^{} {} dx')" /></td>
+            <td><IconButton icon="derivative" tooltip="导数 '" @click="addDerivative" /></td>
+            <td><IconButton icon="cases" tooltip="大括号" @click="add4('\\begin{cases}','\\\\\\end{cases}')" /></td>
+            <td><IconButton icon="newline" tooltip="换行" @click="add4('\\\\','')" /></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
@@ -110,6 +108,7 @@
             <WysiwygEditor 
                 v-model="mdtext" 
                 :get-markdown-renderer="getMarkdownRenderer"
+                @style-state-update="handleStyleStateUpdate"
                 ref="wysiwygEditor"
             />
         </div>
@@ -416,6 +415,7 @@ export default {
             filename: '',
             pdfdown: false,
             pngdown: false,
+            jpgdown: false,
             mddown: false,
             htmldown: false,
             mdup: false,
@@ -429,6 +429,48 @@ export default {
             isInitializing: true, // 新增：标记是否正在初始化
             isWysiwygMode: false, // 新增：标记是否为WYSIWYG模式
             markdownRenderer: null, // 新增：缓存markdown渲染器
+            wysiwygStyleStates: {
+                bold: false,
+                italic: false,
+                underline: false,
+                code: false,
+                strikethrough: false
+            },
+            currentHeadingLevel: 0,
+            headingIcons: {
+                0: 'heading-1', // 普通文本，显示将变为h1
+                1: 'heading-2', // h1，显示将变为h2
+                2: 'heading-3', // h2，显示将变为h3
+                3: 'heading-4', // h3，显示将变为h4
+                4: 'heading-5', // h4，显示将变为h5
+                5: 'heading-6', // h5，显示将变为h6
+                6: 'heading-1'  // h6，显示将变为h1（循环）
+            }
+        }
+    },
+    computed: {
+        currentHeadingIcon() {
+            return this.headingIcons[this.currentHeadingLevel] || 'heading-1';
+        },
+        
+        boldButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.bold ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        italicButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.italic ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        underlineButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.underline ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        codeButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.code ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        strikethroughButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.strikethrough ? 'btn-primary' : 'btn-invisible';
         }
     },
     created(){
@@ -1396,6 +1438,177 @@ export default {
 
         addDerivative() {
             this.add4("'", "");
+        },
+
+        // Handle WYSIWYG style state updates
+        handleStyleStateUpdate(data) {
+            this.wysiwygStyleStates = data.styles;
+            this.currentHeadingLevel = data.headingLevel;
+        },
+
+        // Unified toolbar handlers that work in both modes
+        handleHeading() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleHeading();
+            } else {
+                this.title();
+            }
+        },
+
+        handleBold() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleBold();
+            } else {
+                this.add1('**');
+            }
+        },
+
+        handleItalic() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleItalic();
+            } else {
+                this.add1('*');
+            }
+        },
+
+        handleUnderline() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleUnderline();
+            } else {
+                this.add4('<u>', '</u>');
+            }
+        },
+
+        handleStrikethrough() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleStrikethrough();
+            } else {
+                this.add1('~~');
+            }
+        },
+
+        handleCode() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleCode();
+            } else {
+                this.add1('`');
+            }
+        },
+
+        handleCodeBlock() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertCodeBlock();
+            } else {
+                this.add1('\n```\n');
+            }
+        },
+
+        handleQuote() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertBlockQuote();
+            } else {
+                this.add2('> ');
+            }
+        },
+
+        handleList() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertUnorderedList();
+            } else {
+                this.add2('- ');
+            }
+        },
+
+        handleTaskList() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertTaskList();
+            } else {
+                this.add2('- [ ] ');
+            }
+        },
+
+        handleImage() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertImage();
+            } else {
+                this.add4('![](', ')');
+            }
+        },
+
+        handleHR() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertHorizontalRule();
+            } else {
+                this.add3('------');
+            }
+        },
+
+        handleTOC() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertTOC();
+            } else {
+                this.add3('[[TOC]]');
+            }
+        },
+
+        handleMath() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMathInline();
+            } else {
+                this.add4(' $', '$ ');
+            }
+        },
+
+        handleColorText(color) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertColorText(color);
+            } else {
+                this.add4(`<font color="${color}">`, '</font>');
+            }
+        },
+
+        handleHighlight() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertHighlight();
+            } else {
+                this.add4('<mark>', '</mark>');
+            }
+        },
+
+        // Export functionality improvements for WYSIWYG mode
+        async exportContent(type) {
+            const originalMode = this.isWysiwygMode;
+            
+            try {
+                if (originalMode) {
+                    // Temporarily switch to normal mode for export
+                    this.isWysiwygMode = false;
+                    await this.$nextTick();
+                }
+                
+                // Execute the appropriate export function
+                switch (type) {
+                    case 'pdf':
+                        await this.to_pdf();
+                        break;
+                    case 'png':
+                        await this.to_png();
+                        break;
+                    case 'html':
+                        this.to_html();
+                        break;
+                    case 'md':
+                        this.to_md();
+                        break;
+                }
+            } finally {
+                if (originalMode) {
+                    // Restore WYSIWYG mode
+                    this.isWysiwygMode = true;
+                    await this.$nextTick();
+                    this.$refs.wysiwygEditor?.focus();
+                }
+            }
         },
     },
 }
