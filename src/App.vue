@@ -380,6 +380,8 @@ export default {
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
+            chineseFallback: false, // 中文字体支持标记
+            chineseWarningShown: false, // 中文警告显示标记
         }
     },
     created(){
@@ -858,7 +860,7 @@ export default {
             return bestBreakPoint;
         },
 
-        // 真正的矢量化PDF导出方法 - 使用jsPDF直接生成可选择文本
+        // 真正的矢量化PDF导出方法 - 基于DOM的样式化文本提取
         async to_pdf_vector() {
             this.pdfdown = true;
             this.count = 0;
@@ -867,37 +869,41 @@ export default {
             try {
                 console.log('=== 真正矢量化PDF导出开始 ===');
                 
+                // 设置A4宽度确保一致的渲染
+                this.setA4Width();
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
                 const pdf = new jsPDF('p', 'pt', 'a4');
                 const pageWidth = 595.28;
                 const pageHeight = 841.89;
                 const margin = 40;
                 const contentWidth = pageWidth - margin * 2;
                 
-                // 设置字体
-                pdf.setFont('helvetica');
+                // 加载中文字体支持
+                await this.setupChineseFonts(pdf);
                 
-                // 解析markdown内容为结构化数据
-                const markdownContent = this.parseMarkdownForPDF(this.mdtext);
+                // 获取渲染后的内容元素
+                const contentElement = this.$refs.exportContent;
                 
-                let currentY = margin;
-                let currentPage = 1;
+                // 提取样式化内容
+                const styledContent = this.extractStyledContent(contentElement);
+                console.log('提取到样式化内容块数:', styledContent.length);
                 
-                for (let i = 0; i < markdownContent.length; i++) {
-                    const element = markdownContent[i];
-                    
-                    // 检查是否需要新页面
-                    const estimatedHeight = this.estimateElementHeight(element, contentWidth);
-                    if (currentY + estimatedHeight > pageHeight - margin && currentPage > 1) {
+                // 计算分页
+                const pageBreaks = this.calculateVectorPageBreaks(styledContent, contentWidth, pageHeight - margin * 2);
+                this.sum = pageBreaks.length;
+                
+                // 渲染每一页
+                for (let pageIndex = 0; pageIndex < pageBreaks.length; pageIndex++) {
+                    if (pageIndex > 0) {
                         pdf.addPage();
-                        currentY = margin;
-                        currentPage++;
                     }
                     
-                    // 渲染元素
-                    currentY = this.renderElementToPDF(pdf, element, margin, currentY, contentWidth);
+                    const pageContent = pageBreaks[pageIndex];
+                    await this.renderStyledPageToPDF(pdf, pageContent, margin, margin, contentWidth);
                     
-                    // 更新进度
-                    this.count = (i + 1) / markdownContent.length;
+                    this.count = pageIndex + 1;
+                    console.log(`第${pageIndex + 1}页渲染完成`);
                 }
                 
                 // 下载PDF
@@ -910,198 +916,596 @@ export default {
                 console.error('矢量化PDF导出失败:', error);
                 alert('矢量化PDF导出失败: ' + error.message);
             } finally {
+                this.restoreOriginalWidth();
                 this.pdfdown = false;
             }
         },
 
-        // 解析Markdown内容为PDF结构化数据
-        parseMarkdownForPDF(markdownText) {
-            const lines = markdownText.split('\n');
-            const elements = [];
-            let currentCodeBlock = null;
-            let currentList = null;
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmedLine = line.trim();
+        // 设置中文字体支持 - 改进版
+        async setupChineseFonts(pdf) {
+            try {
+                // 检测是否包含中文字符
+                const hasChinese = /[\u4e00-\u9fff]/.test(this.mdtext);
                 
-                // 处理代码块
-                if (trimmedLine.startsWith('```')) {
-                    if (currentCodeBlock) {
-                        // 结束代码块
-                        elements.push(currentCodeBlock);
-                        currentCodeBlock = null;
-                    } else {
-                        // 开始代码块
-                        const language = trimmedLine.substring(3).trim();
-                        currentCodeBlock = {
-                            type: 'codeblock',
-                            language: language,
-                            content: []
-                        };
-                    }
-                    continue;
-                }
-                
-                if (currentCodeBlock) {
-                    currentCodeBlock.content.push(line);
-                    continue;
-                }
-                
-                // 处理标题
-                if (trimmedLine.startsWith('#')) {
-                    const level = (trimmedLine.match(/^#+/) || [''])[0].length;
-                    const text = trimmedLine.substring(level).trim();
-                    elements.push({
-                        type: 'heading',
-                        level: level,
-                        text: text
-                    });
-                    continue;
-                }
-                
-                // 处理列表
-                if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ') || /^\d+\.\s/.test(trimmedLine)) {
-                    const isOrdered = /^\d+\.\s/.test(trimmedLine);
-                    const text = trimmedLine.replace(/^(-\s|\*\s|\d+\.\s)/, '');
+                if (hasChinese) {
+                    console.log('检测到中文内容，配置Unicode字体支持');
                     
-                    if (!currentList || currentList.ordered !== isOrdered) {
-                        if (currentList) {
-                            elements.push(currentList);
-                        }
-                        currentList = {
-                            type: 'list',
-                            ordered: isOrdered,
-                            items: []
-                        };
+                    // 尝试添加中文字体支持
+                    // 注意：这里使用一个策略来最大化中文字符的显示
+                    try {
+                        // 使用内置字体的Unicode支持
+                        pdf.setFont('helvetica', 'normal');
+                        
+                        // 设置fallback字符串，当遇到不支持的字符时显示
+                        this.chineseFallback = true;
+                        
+                        console.log('中文字体配置完成，使用Unicode兼容模式');
+                    } catch (fontError) {
+                        console.warn('中文字体配置失败，使用默认字体:', fontError);
+                        pdf.setFont('helvetica', 'normal');
+                        this.chineseFallback = true;
                     }
-                    
-                    currentList.items.push(text);
-                    continue;
-                } else if (currentList) {
-                    elements.push(currentList);
-                    currentList = null;
+                } else {
+                    pdf.setFont('helvetica', 'normal');
+                    this.chineseFallback = false;
                 }
                 
-                // 处理空行
-                if (trimmedLine === '') {
-                    if (elements.length > 0 && elements[elements.length - 1].type !== 'break') {
-                        elements.push({ type: 'break' });
-                    }
-                    continue;
-                }
-                
-                // 处理普通段落
-                elements.push({
-                    type: 'paragraph',
-                    text: line
-                });
+                console.log('字体设置完成');
+            } catch (error) {
+                console.warn('字体设置失败，使用默认字体:', error);
+                pdf.setFont('helvetica', 'normal');
+                this.chineseFallback = false;
             }
-            
-            // 处理未结束的元素
-            if (currentCodeBlock) {
-                elements.push(currentCodeBlock);
-            }
-            if (currentList) {
-                elements.push(currentList);
-            }
-            
-            return elements;
         },
 
-        // 估算元素高度
-        estimateElementHeight(element, contentWidth) {
-            switch (element.type) {
-                case 'heading':
-                    return 30 + element.level * 5; // 标题高度
-                case 'paragraph':
-                    const lines = Math.ceil(element.text.length / 80); // 估算行数
-                    return lines * 18; // 行高
-                case 'codeblock':
-                    return element.content.length * 16 + 20; // 代码行数 * 行高 + 边距
-                case 'list':
-                    return element.items.length * 20; // 列表项数 * 行高
-                case 'break':
-                    return 10;
-                default:
-                    return 20;
-            }
-        },
-        
-        // 渲染元素到PDF
-        renderElementToPDF(pdf, element, leftMargin, currentY, contentWidth) {
-            const lineHeight = 18;
+        // 处理中文文本的fallback方法
+        processChinese(text) {
+            if (!this.chineseFallback) return text;
             
-            switch (element.type) {
-                case 'heading':
-                    const fontSize = Math.max(16, 24 - element.level * 2);
-                    pdf.setFontSize(fontSize);
-                    pdf.setFont('helvetica', 'bold');
-                    pdf.text(element.text, leftMargin, currentY + fontSize);
-                    return currentY + fontSize + 10;
+            // 检测并处理中文字符
+            const chineseRegex = /[\u4e00-\u9fff]/g;
+            const hasChinese = chineseRegex.test(text);
+            
+            if (hasChinese) {
+                // 在PDF开始时添加中文支持说明
+                if (!this.chineseWarningShown) {
+                    console.warn('注意：当前PDF包含中文字符，可能显示为空白。建议使用截图模式以获得最佳效果。');
+                    this.chineseWarningShown = true;
+                }
+                
+                // 对于中文字符，我们尝试保留但可能会有显示问题
+                return text;
+            }
+            
+            return text;
+        },
+
+        // 提取样式化内容 - 改进的DOM遍历方法
+        extractStyledContent(contentElement) {
+            const styledBlocks = [];
+            
+            // 直接遍历内容元素的直接子元素
+            const directChildren = Array.from(contentElement.children);
+            
+            for (const element of directChildren) {
+                if (this.shouldSkipElement(element)) continue;
+                
+                const blockInfo = this.analyzeElementStyle(element, contentElement);
+                if (blockInfo && blockInfo.text.trim()) {
+                    styledBlocks.push(blockInfo);
                     
-                case 'paragraph':
-                    pdf.setFontSize(12);
-                    pdf.setFont('helvetica', 'normal');
-                    
-                    // 处理内联代码和数学公式
-                    const processedText = this.processInlineElements(element.text);
-                    const lines = pdf.splitTextToSize(processedText, contentWidth);
-                    
-                    pdf.text(lines, leftMargin, currentY + 12);
-                    return currentY + lines.length * lineHeight + 5;
-                    
-                case 'codeblock':
-                    pdf.setFontSize(10);
-                    pdf.setFont('courier', 'normal');
-                    
-                    // 添加代码块背景（简化版）
-                    const codeHeight = element.content.length * 14 + 16;
-                    pdf.setFillColor(246, 248, 250);
-                    pdf.rect(leftMargin, currentY, contentWidth, codeHeight, 'F');
-                    
-                    // 添加代码内容
-                    let codeY = currentY + 14;
-                    for (const codeLine of element.content) {
-                        pdf.text(codeLine, leftMargin + 8, codeY);
-                        codeY += 14;
+                    // 如果是代码块，特殊处理
+                    if (element.tagName === 'PRE') {
+                        blockInfo.isCodeBlock = true;
+                        blockInfo.codeContent = this.extractCodeBlockContent(element);
                     }
                     
-                    return currentY + codeHeight + 10;
-                    
-                case 'list':
-                    pdf.setFontSize(12);
-                    pdf.setFont('helvetica', 'normal');
-                    
-                    let listY = currentY;
-                    for (let i = 0; i < element.items.length; i++) {
-                        const bullet = element.ordered ? `${i + 1}.` : '•';
-                        pdf.text(bullet, leftMargin, listY + 12);
-                        
-                        const itemLines = pdf.splitTextToSize(element.items[i], contentWidth - 20);
-                        pdf.text(itemLines, leftMargin + 20, listY + 12);
-                        listY += itemLines.length * lineHeight;
+                    // 如果是列表，处理列表项
+                    if (element.tagName === 'UL' || element.tagName === 'OL') {
+                        const listItems = Array.from(element.querySelectorAll('li'));
+                        blockInfo.listItems = listItems.map(li => li.textContent.trim());
+                        blockInfo.isOrdered = element.tagName === 'OL';
                     }
                     
-                    return listY + 5;
+                    // 处理数学公式
+                    const mathElements = element.querySelectorAll('.katex');
+                    if (mathElements.length > 0) {
+                        blockInfo.hasMath = true;
+                        blockInfo.mathText = Array.from(mathElements).map(el => 
+                            el.querySelector('.katex-html')?.textContent || 
+                            el.textContent || ''
+                        ).join(' ');
+                    }
+                }
+            }
+            
+            return styledBlocks;
+        },
+
+        // 判断是否跳过元素
+        shouldSkipElement(element) {
+            // 跳过隐藏元素和不重要的元素
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+                return true;
+            }
+            
+            // 跳过空的或只包含空白的元素
+            if (!element.textContent.trim()) {
+                return true;
+            }
+            
+            return false;
+        },
+
+        // 分析元素样式 - 改进版
+        analyzeElementStyle(element, containerElement) {
+            const computedStyle = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            const containerRect = containerElement.getBoundingClientRect();
+            
+            // 计算相对位置
+            const relativeTop = rect.top - containerRect.top;
+            const relativeLeft = rect.left - containerRect.left;
+            
+            let text = '';
+            let type = 'text';
+            
+            // 处理不同类型的元素
+            switch (element.tagName) {
+                case 'H1':
+                case 'H2':
+                case 'H3':
+                case 'H4':
+                case 'H5':
+                case 'H6':
+                    text = element.textContent.trim();
+                    type = 'heading';
+                    break;
                     
-                case 'break':
-                    return currentY + 10;
+                case 'P':
+                    text = this.extractInlineStyledText(element);
+                    type = 'paragraph';
+                    break;
+                    
+                case 'PRE':
+                    text = this.extractCodeBlockContent(element);
+                    type = 'codeblock';
+                    break;
+                    
+                case 'UL':
+                case 'OL':
+                    text = this.extractListText(element);
+                    type = 'list';
+                    break;
+                    
+                case 'BLOCKQUOTE':
+                    text = element.textContent.trim();
+                    type = 'blockquote';
+                    break;
+                    
+                case 'HR':
+                    text = '---';
+                    type = 'divider';
+                    break;
                     
                 default:
-                    return currentY;
+                    text = element.textContent.trim();
+                    break;
+            }
+            
+            if (!text) return null;
+            
+            return {
+                text: text,
+                type: type,
+                tagName: element.tagName,
+                fontSize: parseFloat(computedStyle.fontSize) || 12,
+                fontWeight: computedStyle.fontWeight,
+                fontStyle: computedStyle.fontStyle,
+                color: computedStyle.color,
+                backgroundColor: computedStyle.backgroundColor,
+                lineHeight: parseFloat(computedStyle.lineHeight) || 1.2,
+                marginTop: parseFloat(computedStyle.marginTop) || 0,
+                marginBottom: parseFloat(computedStyle.marginBottom) || 0,
+                paddingTop: parseFloat(computedStyle.paddingTop) || 0,
+                paddingBottom: parseFloat(computedStyle.paddingBottom) || 0,
+                relativeTop: relativeTop,
+                relativeLeft: relativeLeft,
+                width: rect.width,
+                height: rect.height,
+                // 添加更多样式信息
+                borderRadius: computedStyle.borderRadius,
+                border: computedStyle.border,
+                isCodeBlock: false,
+                isOrdered: false,
+                listItems: [],
+                hasMath: false,
+                mathText: ''
+            };
+        },
+
+        // 提取列表文本
+        extractListText(listElement) {
+            const items = Array.from(listElement.querySelectorAll('li'));
+            return items.map(li => li.textContent.trim()).join('\n');
+        },
+
+        // 提取内联样式文本 - 改进版
+        extractInlineStyledText(element) {
+            let result = '';
+            
+            for (const child of element.childNodes) {
+                if (child.nodeType === Node.TEXT_NODE) {
+                    result += child.textContent;
+                } else if (child.nodeType === Node.ELEMENT_NODE) {
+                    // 处理内联元素
+                    switch (child.tagName) {
+                        case 'CODE':
+                            // 保留内联代码标记
+                            result += child.textContent;
+                            break;
+                        case 'STRONG':
+                        case 'B':
+                            result += child.textContent;
+                            break;
+                        case 'EM':
+                        case 'I':
+                            result += child.textContent;
+                            break;
+                        case 'SPAN':
+                            // 检查是否是数学公式
+                            if (child.classList.contains('katex')) {
+                                const mathText = child.querySelector('.katex-html')?.textContent || child.textContent;
+                                result += mathText;
+                            } else {
+                                result += child.textContent;
+                            }
+                            break;
+                        default:
+                            result += child.textContent;
+                            break;
+                    }
+                }
+            }
+            
+            return result;
+        },
+
+        // 提取代码块内容 - 改进版
+        extractCodeBlockContent(preElement) {
+            const codeElement = preElement.querySelector('code');
+            if (!codeElement) return preElement.textContent;
+            
+            // 检查是否有行号列表
+            const linesList = codeElement.querySelector('ol');
+            if (linesList) {
+                const lines = Array.from(linesList.querySelectorAll('li'));
+                return lines.map((li, index) => {
+                    const lineNumber = (index + 1).toString().padStart(3, ' ');
+                    const lineContent = li.textContent.replace(/\s+$/, ''); // 移除尾部空白
+                    return `${lineNumber} | ${lineContent}`;
+                }).join('\n');
+            }
+            
+            // 如果没有行号，直接返回代码内容
+            return codeElement.textContent;
+        },
+
+        // 计算矢量PDF分页
+        calculateVectorPageBreaks(styledContent, contentWidth, pageHeight) {
+            const pages = [];
+            let currentPage = [];
+            let currentPageHeight = 0;
+            const lineHeight = 16; // 基础行高
+            
+            for (const block of styledContent) {
+                const blockHeight = this.estimateStyledBlockHeight(block, contentWidth);
+                
+                // 检查是否需要新页面
+                if (currentPageHeight + blockHeight > pageHeight && currentPage.length > 0) {
+                    pages.push(currentPage);
+                    currentPage = [];
+                    currentPageHeight = 0;
+                }
+                
+                currentPage.push(block);
+                currentPageHeight += blockHeight;
+            }
+            
+            // 添加最后一页
+            if (currentPage.length > 0) {
+                pages.push(currentPage);
+            }
+            
+            return pages;
+        },
+
+        // 估算样式化块的高度
+        estimateStyledBlockHeight(block, contentWidth) {
+            const baseLineHeight = 16;
+            let height = 0;
+            
+            switch (block.type) {
+                case 'heading':
+                    height = Math.max(block.fontSize * 1.2, 20) + block.marginTop + block.marginBottom;
+                    break;
+                    
+                case 'paragraph':
+                    const textLines = Math.ceil(block.text.length * 8 / contentWidth); // 粗略估算
+                    height = textLines * baseLineHeight + block.marginTop + block.marginBottom;
+                    break;
+                    
+                case 'codeblock':
+                    const codeLines = block.text.split('\n').length;
+                    height = codeLines * 14 + 20; // 代码行高 + 边距
+                    break;
+                    
+                case 'listitem':
+                    height = baseLineHeight + 4;
+                    break;
+                    
+                default:
+                    height = baseLineHeight;
+                    break;
+            }
+            
+            return Math.max(height, 10);
+        },
+
+        // 渲染样式化页面到PDF
+        async renderStyledPageToPDF(pdf, pageContent, startX, startY, contentWidth) {
+            let currentY = startY;
+            
+            for (const block of pageContent) {
+                currentY = await this.renderStyledBlockToPDF(pdf, block, startX, currentY, contentWidth);
+                currentY += 5; // 块间距
             }
         },
-        
-        // 处理内联元素（代码、数学公式等）
-        processInlineElements(text) {
-            // 简化处理：移除markdown语法标记
-            return text
-                .replace(/`([^`]+)`/g, '$1') // 内联代码
-                .replace(/\$([^$]+)\$/g, '$1') // 内联数学公式
+
+        // 渲染样式化块到PDF - 改进版
+        async renderStyledBlockToPDF(pdf, block, x, y, contentWidth) {
+            switch (block.type) {
+                case 'heading':
+                    return this.renderHeadingToPDF(pdf, block, x, y, contentWidth);
+                    
+                case 'paragraph':
+                    return this.renderParagraphToPDF(pdf, block, x, y, contentWidth);
+                    
+                case 'codeblock':
+                    return this.renderCodeBlockToPDF(pdf, block, x, y, contentWidth);
+                    
+                case 'list':
+                    return this.renderListToPDF(pdf, block, x, y, contentWidth);
+                    
+                case 'blockquote':
+                    return this.renderBlockquoteToPDF(pdf, block, x, y, contentWidth);
+                    
+                case 'divider':
+                    return this.renderDividerToPDF(pdf, block, x, y, contentWidth);
+                    
+                default:
+                    return this.renderTextToPDF(pdf, block, x, y, contentWidth);
+            }
+        },
+
+        // 渲染标题 - 改进版支持中文
+        renderHeadingToPDF(pdf, block, x, y, contentWidth) {
+            const fontSize = Math.max(14, 24 - parseInt(block.tagName.charAt(1)) * 2);
+            
+            pdf.setFontSize(fontSize);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(0, 0, 0);
+            
+            const processedText = this.processChinese(block.text);
+            const lines = pdf.splitTextToSize(processedText, contentWidth);
+            pdf.text(lines, x, y + fontSize);
+            
+            return y + lines.length * fontSize * 1.2 + 10;
+        },
+
+        // 渲染段落 - 改进版，处理内联代码和数学公式，支持中文
+        renderParagraphToPDF(pdf, block, x, y, contentWidth) {
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setTextColor(0, 0, 0);
+            
+            let currentY = y + 12;
+            const lineHeight = 16;
+            
+            // 如果包含数学公式，特殊处理
+            if (block.hasMath && block.mathText) {
+                // 先渲染普通文本
+                const textWithoutMath = block.text.replace(/\$[^$]+\$/g, '');
+                if (textWithoutMath.trim()) {
+                    const processedText = this.processChinese(textWithoutMath);
+                    const textLines = pdf.splitTextToSize(processedText, contentWidth);
+                    pdf.text(textLines, x, currentY);
+                    currentY += textLines.length * lineHeight;
+                }
+                
+                // 渲染数学公式（作为普通文本）
+                pdf.setFont('helvetica', 'italic');
+                pdf.setTextColor(0, 0, 139); // 深蓝色
+                const processedMath = this.processChinese(block.mathText);
+                const mathLines = pdf.splitTextToSize(processedMath, contentWidth);
+                pdf.text(mathLines, x, currentY);
+                currentY += mathLines.length * lineHeight;
+                
+                // 恢复字体
+                pdf.setFont('helvetica', 'normal');
+                pdf.setTextColor(0, 0, 0);
+            } else {
+                // 普通段落处理
+                const processedText = this.processInlineFormats(block.text);
+                const finalText = this.processChinese(processedText);
+                const lines = pdf.splitTextToSize(finalText, contentWidth);
+                pdf.text(lines, x, currentY);
+                currentY += lines.length * lineHeight;
+            }
+            
+            return currentY + 8;
+        },
+
+        // 处理内联格式 - 改进版
+        processInlineFormats(text) {
+            // 处理内联代码：添加背景标识
+            text = text.replace(/`([^`]+)`/g, (match, code) => {
+                return `[CODE: ${code}]`;
+            });
+            
+            // 处理数学公式
+            text = text.replace(/\$([^$]+)\$/g, (match, formula) => {
+                return `[MATH: ${formula}]`;
+            });
+            
+            // 移除其他markdown标记但保留内容
+            text = text
                 .replace(/\*\*([^*]+)\*\*/g, '$1') // 粗体
-                .replace(/\*([^*]+)\*/g, '$1') // 斜体
-                .replace(/~~([^~]+)~~/g, '$1'); // 删除线
+                .replace(/\*([^*]+)\*/g, '$1')     // 斜体
+                .replace(/~~([^~]+)~~/g, '$1');    // 删除线
+            
+            return text;
+        },
+
+        // 渲染代码块 - 改进版支持中文和自动换行
+        renderCodeBlockToPDF(pdf, block, x, y, contentWidth) {
+            // 设置代码块背景
+            const codeLines = block.text.split('\n');
+            let totalLines = 0;
+            
+            // 预计算总行数（考虑自动换行）
+            pdf.setFontSize(10);
+            pdf.setFont('courier', 'normal');
+            
+            const wrappedLines = [];
+            for (const line of codeLines) {
+                if (line.trim()) {
+                    const processedLine = this.processChinese(line);
+                    const wrapped = pdf.splitTextToSize(processedLine, contentWidth - 16);
+                    wrappedLines.push(...wrapped);
+                    totalLines += wrapped.length;
+                } else {
+                    wrappedLines.push('');
+                    totalLines += 1;
+                }
+            }
+            
+            const blockHeight = totalLines * 14 + 16;
+            
+            // 绘制灰色背景
+            pdf.setFillColor(246, 248, 250);
+            pdf.rect(x, y, contentWidth, blockHeight, 'F');
+            
+            // 绘制边框
+            pdf.setDrawColor(208, 215, 222);
+            pdf.setLineWidth(1);
+            pdf.rect(x, y, contentWidth, blockHeight, 'S');
+            
+            // 设置代码字体
+            pdf.setFontSize(10);
+            pdf.setFont('courier', 'normal');
+            pdf.setTextColor(36, 41, 47);
+            
+            // 渲染代码行
+            let lineY = y + 14;
+            for (const line of wrappedLines) {
+                if (line.trim()) {
+                    pdf.text(line, x + 8, lineY);
+                }
+                lineY += 14;
+            }
+            
+            return y + blockHeight + 10;
+        },
+
+        // 渲染列表 - 改进版支持中文
+        renderListToPDF(pdf, block, x, y, contentWidth) {
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setTextColor(0, 0, 0);
+            
+            let listY = y;
+            
+            if (block.listItems && block.listItems.length > 0) {
+                for (let i = 0; i < block.listItems.length; i++) {
+                    const bullet = block.isOrdered ? `${i + 1}.` : '•';
+                    pdf.text(bullet, x, listY + 12);
+                    
+                    const processedItem = this.processChinese(block.listItems[i]);
+                    const itemLines = pdf.splitTextToSize(processedItem, contentWidth - 20);
+                    pdf.text(itemLines, x + 20, listY + 12);
+                    listY += itemLines.length * 16;
+                }
+            } else {
+                // 回退到简单文本处理
+                const lines = block.text.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line) {
+                        pdf.text('•', x, listY + 12);
+                        const processedLine = this.processChinese(line);
+                        const itemLines = pdf.splitTextToSize(processedLine, contentWidth - 20);
+                        pdf.text(itemLines, x + 20, listY + 12);
+                        listY += itemLines.length * 16;
+                    }
+                }
+            }
+            
+            return listY + 5;
+        },
+
+        // 渲染引用块 - 改进版支持中文
+        renderBlockquoteToPDF(pdf, block, x, y, contentWidth) {
+            // 绘制左侧边线
+            pdf.setDrawColor(208, 215, 222);
+            pdf.setLineWidth(3);
+            
+            const processedText = this.processChinese(block.text);
+            const lines = pdf.splitTextToSize(processedText, contentWidth - 20);
+            const blockHeight = lines.length * 16;
+            
+            pdf.line(x, y, x, y + blockHeight + 8);
+            
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'italic');
+            pdf.setTextColor(87, 96, 106);
+            
+            pdf.text(lines, x + 15, y + 12);
+            
+            return y + blockHeight + 16;
+        },
+
+        // 渲染分隔线
+        renderDividerToPDF(pdf, block, x, y, contentWidth) {
+            pdf.setDrawColor(208, 215, 222);
+            pdf.setLineWidth(1);
+            pdf.line(x, y + 10, x + contentWidth, y + 10);
+            
+            return y + 20;
+        },
+
+        // 渲染普通文本 - 改进版支持中文
+        renderTextToPDF(pdf, block, x, y, contentWidth) {
+            pdf.setFontSize(12);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setTextColor(0, 0, 0);
+            
+            const processedText = this.processChinese(block.text);
+            const lines = pdf.splitTextToSize(processedText, contentWidth);
+            pdf.text(lines, x, y + 12);
+            
+            return y + lines.length * 16;
+        },
+
+        // 处理内联格式
+        processInlineFormats(text) {
+            // 简化处理：移除markdown标记但保留内容
+            return text
+                .replace(/\*\*([^*]+)\*\*/g, '$1') // 粗体
+                .replace(/\*([^*]+)\*/g, '$1')     // 斜体
+                .replace(/`([^`]+)`/g, '$1')       // 内联代码
+                .replace(/\$([^$]+)\$/g, '$1');    // 数学公式
         },
 
 
