@@ -16,6 +16,7 @@
 <script>
 import TurndownService from 'turndown';
 import { debounce } from 'lodash-es';
+import katex from 'katex';
 
 export default {
   name: 'WysiwygEditor',
@@ -72,6 +73,9 @@ export default {
   mounted() {
     // Initial conversion from Markdown to HTML
     this.updateHtmlContent();
+    
+    // Ensure proper initialization for empty content
+    this.initializeEmptyEditor();
     
     // Setup cursor movement detection during debounce
     this.setupCursorMovementDetection();
@@ -139,14 +143,18 @@ export default {
             node.classList.contains('katex-display') ||
             node.classList.contains('katex-inline') ||
             node.classList.contains('math-inline') ||
-            node.classList.contains('math-block')
+            node.classList.contains('math-block') ||
+            node.classList.contains('math-inline-rendered') ||
+            node.classList.contains('math-block-rendered')
           ));
         },
         replacement: (content, node) => {
           // Try to get the original LaTeX from data attributes first
           const dataLatex = node.getAttribute('data-latex');
           if (dataLatex) {
-            return node.classList.contains('math-block') ? `\n$$\n${dataLatex}\n$$\n` : ` $${dataLatex}$ `;
+            return node.classList.contains('math-block') || node.classList.contains('math-block-rendered') 
+              ? `\n$$\n${dataLatex}\n$$\n` 
+              : ` $${dataLatex}$ `;
           }
           
           // Fallback: try to get from KaTeX annotation
@@ -179,12 +187,63 @@ export default {
         
         this.htmlContent = htmlContent;
       } else {
-        this.htmlContent = '';
+        // Ensure empty editor has proper structure for editing
+        this.htmlContent = '<p><br></p>';
+      }
+      
+      // Ensure proper editor structure after content update
+      this.$nextTick(() => {
+        this.ensureMinimalContent();
+      });
+    },
+
+    initializeEmptyEditor() {
+      // Initialize empty editor with proper DOM structure
+      if (!this.modelValue || this.modelValue.trim() === '') {
+        this.$nextTick(() => {
+          if (this.$refs.editor) {
+            this.ensureMinimalContent();
+            this.setupEmptyContentBinding();
+          }
+        });
       }
     },
 
+    ensureMinimalContent() {
+      // Ensure editor always has editable content structure
+      if (!this.$refs.editor) return;
+      
+      const content = this.$refs.editor.innerHTML.trim();
+      if (!content || content === '' || content === '<br>') {
+        this.$refs.editor.innerHTML = '<p><br></p>';
+      } else if (!this.$refs.editor.firstElementChild) {
+        // If only text nodes, wrap in paragraph
+        const textContent = this.$refs.editor.textContent;
+        if (textContent.trim()) {
+          this.$refs.editor.innerHTML = `<p>${textContent}</p>`;
+        } else {
+          this.$refs.editor.innerHTML = '<p><br></p>';
+        }
+      }
+    },
+
+    setupEmptyContentBinding() {
+      // Ensure event listeners work properly for empty content
+      if (!this.$refs.editor) return;
+      
+      // Force focus handling for empty content
+      const handleEmptyFocus = () => {
+        this.ensureMinimalContent();
+        this.updateStyleStates();
+      };
+      
+      // Add one-time listener for first interaction
+      this.$refs.editor.addEventListener('focus', handleEmptyFocus, { once: true });
+      this.$refs.editor.addEventListener('click', handleEmptyFocus, { once: true });
+    },
+
     makeMatFormulasEditable(htmlContent) {
-      // Replace rendered KaTeX with editable placeholders
+      // Replace rendered KaTeX with properly rendered and editable placeholders
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = htmlContent;
       
@@ -194,11 +253,7 @@ export default {
         const annotation = katexElement.querySelector('annotation[encoding="application/x-tex"]');
         if (annotation) {
           const latex = annotation.textContent;
-          const mathSpan = document.createElement('span');
-          mathSpan.className = 'math-inline';
-          mathSpan.setAttribute('data-latex', latex);
-          mathSpan.textContent = `$${latex}$`;
-          mathSpan.addEventListener('click', () => this.editMathFormula(mathSpan));
+          const mathSpan = this.createEditableMathElement(latex, false);
           katexElement.parentNode.replaceChild(mathSpan, katexElement);
         }
       });
@@ -209,26 +264,117 @@ export default {
         const annotation = katexElement.querySelector('annotation[encoding="application/x-tex"]');
         if (annotation) {
           const latex = annotation.textContent;
-          const mathDiv = document.createElement('div');
-          mathDiv.className = 'math-block';
-          mathDiv.setAttribute('data-latex', latex);
-          mathDiv.textContent = `$$${latex}$$`;
-          mathDiv.addEventListener('click', () => this.editMathFormula(mathDiv));
+          const mathDiv = this.createEditableMathElement(latex, true);
           katexElement.parentNode.replaceChild(mathDiv, katexElement);
         }
       });
       
-      return tempDiv.innerHTML;
+      // Also handle any remaining $ delimited formulas that weren't processed by markdown-it
+      let processedContent = tempDiv.innerHTML;
+      
+      // Handle block formulas $$...$$
+      processedContent = processedContent.replace(/\$\$([^$]+)\$\$/g, (match, formula) => {
+        const mathElement = this.createEditableMathElement(formula.trim(), true);
+        return mathElement.outerHTML;
+      });
+      
+      // Handle inline formulas $...$
+      processedContent = processedContent.replace(/\$([^$]+)\$/g, (match, formula) => {
+        const mathElement = this.createEditableMathElement(formula.trim(), false);
+        return mathElement.outerHTML;
+      });
+      
+      return processedContent;
+    },
+
+    createEditableMathElement(latex, isBlock) {
+      // Create an element that renders LaTeX and is clickable for editing
+      const element = document.createElement(isBlock ? 'div' : 'span');
+      element.className = isBlock ? 'math-block-rendered' : 'math-inline-rendered';
+      element.setAttribute('data-latex', latex);
+      element.setAttribute('contenteditable', 'false'); // Prevent direct editing
+      element.style.cursor = 'pointer';
+      
+      try {
+        // Render the LaTeX using KaTeX
+        const katex = this.getKaTeX();
+        if (katex) {
+          const rendered = katex.renderToString(latex, {
+            throwOnError: false,
+            displayMode: isBlock,
+            output: 'html'
+          });
+          element.innerHTML = rendered;
+        } else {
+          // Fallback if KaTeX is not available
+          element.textContent = isBlock ? `$$${latex}$$` : `$${latex}$`;
+          element.style.backgroundColor = '#f6f8fa';
+          element.style.border = '1px dashed #d1d9e0';
+          element.style.borderRadius = '3px';
+          element.style.padding = isBlock ? '16px' : '2px 4px';
+          element.style.display = isBlock ? 'block' : 'inline-block';
+          element.style.margin = isBlock ? '16px 0' : '0';
+        }
+      } catch (error) {
+        // Error in LaTeX rendering, show source
+        element.textContent = isBlock ? `$$${latex}$$` : `$${latex}$`;
+        element.style.backgroundColor = '#fff2f2';
+        element.style.border = '1px dashed #d73a49';
+        element.style.borderRadius = '3px';
+        element.style.padding = isBlock ? '16px' : '2px 4px';
+        element.style.display = isBlock ? 'block' : 'inline-block';
+        element.style.margin = isBlock ? '16px 0' : '0';
+        element.title = `LaTeX Error: ${error.message}`;
+      }
+      
+      // Add click handler for editing
+      element.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.editMathFormula(element);
+      });
+      
+      return element;
+    },
+
+    getKaTeX() {
+      // Return the imported KaTeX directly
+      return katex;
     },
 
     editMathFormula(mathElement) {
       const currentLatex = mathElement.getAttribute('data-latex') || '';
-      const isBlock = mathElement.classList.contains('math-block');
+      const isBlock = mathElement.classList.contains('math-block-rendered');
       
       const newLatex = prompt(`编辑${isBlock ? '块级' : '行内'}数学公式:`, currentLatex);
-      if (newLatex !== null) {
+      if (newLatex !== null && newLatex !== currentLatex) {
+        // Update the element with new LaTeX
         mathElement.setAttribute('data-latex', newLatex);
-        mathElement.textContent = isBlock ? `$$${newLatex}$$` : `$${newLatex}$`;
+        
+        try {
+          // Re-render the LaTeX
+          const katex = this.getKaTeX();
+          if (katex) {
+            const rendered = katex.renderToString(newLatex, {
+              throwOnError: false,
+              displayMode: isBlock,
+              output: 'html'
+            });
+            mathElement.innerHTML = rendered;
+            mathElement.style.backgroundColor = '';
+            mathElement.style.border = '';
+            mathElement.title = '';
+          } else {
+            // Fallback rendering
+            mathElement.textContent = isBlock ? `$$${newLatex}$$` : `$${newLatex}$`;
+          }
+        } catch (error) {
+          // Error in rendering, show source with error indication
+          mathElement.textContent = isBlock ? `$$${newLatex}$$` : `$${newLatex}$`;
+          mathElement.style.backgroundColor = '#fff2f2';
+          mathElement.style.border = '1px dashed #d73a49';
+          mathElement.title = `LaTeX Error: ${error.message}`;
+        }
         
         // Trigger input event to update the content
         this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
@@ -242,6 +388,9 @@ export default {
 
     handleInput(event) {
       if (this.isUpdating) return;
+      
+      // Ensure content has proper structure after input
+      this.ensureMinimalContent();
       
       // Save caret position immediately
       this.saveCaretPosition();
@@ -322,24 +471,24 @@ export default {
       
       const range = selection.getRangeAt(0);
       
-      // Smart style detection: handle both selection and cursor position
+      // Enhanced style detection: handle both selection and cursor position
       let styleElement = null;
       
       if (range.collapsed) {
-        // No selection - check style at cursor position
-        styleElement = this.getStyleElementAtCursor(range);
+        // No selection - check style at cursor position with improved logic
+        styleElement = this.getFormatStateAtCursor(range);
       } else {
         // Has selection - check style of selected content
         styleElement = this.getStyleElementOfSelection(range);
       }
       
-      // Update current styles
+      // Update current styles with better detection
       this.currentStyles = {
-        bold: this.isStyleActive(styleElement, 'strong, b'),
-        italic: this.isStyleActive(styleElement, 'em, i'),
-        underline: this.isStyleActive(styleElement, 'u'),
-        code: this.isStyleActive(styleElement, 'code'),
-        strikethrough: this.isStyleActive(styleElement, 'del, s, strike')
+        bold: this.isStyleActiveImproved(styleElement, 'strong, b, [style*="font-weight: bold"], [style*="font-weight:bold"]'),
+        italic: this.isStyleActiveImproved(styleElement, 'em, i, [style*="font-style: italic"], [style*="font-style:italic"]'),
+        underline: this.isStyleActiveImproved(styleElement, 'u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]'),
+        code: this.isStyleActiveImproved(styleElement, 'code'),
+        strikethrough: this.isStyleActiveImproved(styleElement, 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]')
       };
       
       // Update current heading level
@@ -352,26 +501,140 @@ export default {
       });
     },
 
-    getStyleElementAtCursor(range) {
-      // When no selection, check the style at cursor position
+    getFormatStateAtCursor(range) {
+      // Improved cursor position style detection
       const container = range.startContainer;
+      const offset = range.startOffset;
       
       if (container.nodeType === Node.TEXT_NODE) {
-        const offset = range.startOffset;
+        // For text nodes, check the parent element and surrounding context
+        const parentElement = container.parentElement;
         
-        // If cursor is at the beginning of text, check previous element's style
+        // If cursor is at the start of text, check previous formatted element
         if (offset === 0) {
           const prevElement = this.getPreviousStyledElement(container);
-          if (prevElement) {
+          if (prevElement && this.hasInheritableStyles(prevElement)) {
             return prevElement;
           }
         }
         
-        // Check parent element for style
-        return container.parentElement;
+        // If cursor is at the end of text, check next formatted element
+        if (offset === container.textContent.length) {
+          const nextElement = this.getNextStyledElement(container);
+          if (nextElement && this.hasInheritableStyles(nextElement)) {
+            return nextElement;
+          }
+        }
+        
+        // Default to parent element
+        return parentElement;
+      } else if (container.nodeType === Node.ELEMENT_NODE) {
+        // For element nodes, try to get the most specific styled element
+        const childNode = container.childNodes[offset];
+        if (childNode && childNode.nodeType === Node.ELEMENT_NODE) {
+          return childNode;
+        }
+        return container;
       }
       
       return container;
+    },
+
+    hasInheritableStyles(element) {
+      // Check if an element has styles that should be inherited for cursor formatting
+      if (!element) return false;
+      
+      const computedStyle = window.getComputedStyle(element);
+      const inlineStyle = element.style;
+      
+      return (
+        element.tagName === 'STRONG' ||
+        element.tagName === 'B' ||
+        element.tagName === 'EM' ||
+        element.tagName === 'I' ||
+        element.tagName === 'U' ||
+        element.tagName === 'CODE' ||
+        element.tagName === 'DEL' ||
+        element.tagName === 'S' ||
+        element.tagName === 'STRIKE' ||
+        computedStyle.fontWeight === 'bold' ||
+        computedStyle.fontWeight === '700' ||
+        computedStyle.fontStyle === 'italic' ||
+        computedStyle.textDecoration.includes('underline') ||
+        computedStyle.textDecoration.includes('line-through') ||
+        inlineStyle.fontWeight === 'bold' ||
+        inlineStyle.fontStyle === 'italic' ||
+        inlineStyle.textDecoration.includes('underline') ||
+        inlineStyle.textDecoration.includes('line-through')
+      );
+    },
+
+    getNextStyledElement(textNode) {
+      // Find the next styled element after a text node
+      let currentNode = textNode;
+      
+      while (currentNode) {
+        if (currentNode.nextSibling) {
+          currentNode = currentNode.nextSibling;
+          
+          if (currentNode.nodeType === Node.ELEMENT_NODE && this.hasInheritableStyles(currentNode)) {
+            return currentNode;
+          }
+          
+          if (currentNode.nodeType === Node.TEXT_NODE && currentNode.textContent.trim()) {
+            return currentNode.parentElement;
+          }
+        } else {
+          currentNode = currentNode.parentNode;
+          if (currentNode === this.$refs.editor) {
+            break;
+          }
+        }
+      }
+      
+      return null;
+    },
+
+    isStyleActiveImproved(element, selector) {
+      if (!element) return false;
+      
+      // Check direct match
+      if (element.matches && element.matches(selector)) {
+        return true;
+      }
+      
+      // Check ancestors
+      const matchingAncestor = element.closest(selector);
+      if (matchingAncestor) {
+        return true;
+      }
+      
+      // Check computed styles for inline styles
+      const computedStyle = window.getComputedStyle(element);
+      
+      // Check for bold
+      if (selector.includes('font-weight') && 
+          (computedStyle.fontWeight === 'bold' || computedStyle.fontWeight === '700' || parseInt(computedStyle.fontWeight) >= 700)) {
+        return true;
+      }
+      
+      // Check for italic
+      if (selector.includes('font-style') && computedStyle.fontStyle === 'italic') {
+        return true;
+      }
+      
+      // Check for text decoration (underline, line-through)
+      if (selector.includes('text-decoration')) {
+        const textDecoration = computedStyle.textDecoration;
+        if (selector.includes('underline') && textDecoration.includes('underline')) {
+          return true;
+        }
+        if (selector.includes('line-through') && textDecoration.includes('line-through')) {
+          return true;
+        }
+      }
+      
+      return false;
     },
 
     getStyleElementOfSelection(range) {
@@ -922,14 +1185,16 @@ export default {
         // Use execCommand for simple cases (selected text)
         document.execCommand('bold', false, null);
       } else {
-        // Use our custom logic for cursor-based formatting
-        this.toggleFormatWithContext('bold');
+        // Use our improved logic for cursor-based formatting
+        this.toggleFormatAtCursor('bold');
       }
       
       // Force immediate style state update
-      setTimeout(() => {
-        this.updateStyleStates();
-      }, 50);
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
@@ -938,12 +1203,14 @@ export default {
       if (this.isSimpleToggle()) {
         document.execCommand('italic', false, null);
       } else {
-        this.toggleFormatWithContext('italic');
+        this.toggleFormatAtCursor('italic');
       }
       
-      setTimeout(() => {
-        this.updateStyleStates();
-      }, 50);
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
@@ -952,12 +1219,14 @@ export default {
       if (this.isSimpleToggle()) {
         document.execCommand('underline', false, null);
       } else {
-        this.toggleFormatWithContext('underline');
+        this.toggleFormatAtCursor('underline');
       }
       
-      setTimeout(() => {
-        this.updateStyleStates();
-      }, 50);
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
@@ -966,14 +1235,119 @@ export default {
       if (this.isSimpleToggle()) {
         document.execCommand('strikeThrough', false, null);
       } else {
-        this.toggleFormatWithContext('strikeThrough');
+        this.toggleFormatAtCursor('strikethrough');
       }
       
-      setTimeout(() => {
-        this.updateStyleStates();
-      }, 50);
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    toggleFormatAtCursor(formatType) {
+      // Improved format toggling for cursor position
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      
+      // Check current style state at cursor
+      const styleElement = this.getFormatStateAtCursor(range);
+      const isCurrentlyActive = this.isFormatActiveAtCursor(formatType, styleElement);
+      
+      if (isCurrentlyActive) {
+        // Remove formatting - insert neutral span to break inheritance
+        this.insertNeutralFormattingSpan(formatType, range);
+      } else {
+        // Apply formatting - insert formatted span
+        this.insertFormattingSpan(formatType, range);
+      }
+    },
+
+    isFormatActiveAtCursor(formatType, element) {
+      // Check if a format is active at the cursor position
+      const selectorMap = {
+        'bold': 'strong, b, [style*="font-weight: bold"], [style*="font-weight:bold"]',
+        'italic': 'em, i, [style*="font-style: italic"], [style*="font-style:italic"]',
+        'underline': 'u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]',
+        'strikethrough': 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]'
+      };
+      
+      const selector = selectorMap[formatType];
+      return selector ? this.isStyleActiveImproved(element, selector) : false;
+    },
+
+    insertNeutralFormattingSpan(formatType, range) {
+      // Insert a span that neutralizes the current formatting
+      const span = document.createElement('span');
+      
+      // Apply neutral styles to break inheritance
+      switch (formatType) {
+        case 'bold':
+          span.style.fontWeight = 'normal';
+          break;
+        case 'italic':
+          span.style.fontStyle = 'normal';
+          break;
+        case 'underline':
+          span.style.textDecoration = 'none';
+          break;
+        case 'strikethrough':
+          span.style.textDecoration = 'none';
+          break;
+      }
+      
+      // Add a zero-width space to make it editable
+      span.appendChild(document.createTextNode('\u200B'));
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    },
+
+    insertFormattingSpan(formatType, range) {
+      // Insert a span with the desired formatting
+      const span = document.createElement('span');
+      
+      // Apply formatting styles
+      switch (formatType) {
+        case 'bold':
+          span.style.fontWeight = 'bold';
+          break;
+        case 'italic':
+          span.style.fontStyle = 'italic';
+          break;
+        case 'underline':
+          span.style.textDecoration = 'underline';
+          break;
+        case 'strikethrough':
+          span.style.textDecoration = 'line-through';
+          break;
+      }
+      
+      // Add a zero-width space to make it editable
+      span.appendChild(document.createTextNode('\u200B'));
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
     },
 
     isSimpleToggle() {
@@ -1099,12 +1473,9 @@ export default {
       
       const range = selection.getRangeAt(0);
       
-      // Check if we're already in a code element
-      const container = range.commonAncestorContainer;
-      const element = container.nodeType === Node.TEXT_NODE 
-        ? container.parentElement 
-        : container;
-      const codeElement = element.closest('code');
+      // Check if we're already in a code element with improved detection
+      const styleElement = this.getFormatStateAtCursor(range);
+      const codeElement = styleElement.closest('code');
       
       if (codeElement) {
         // Remove code formatting
@@ -1137,7 +1508,12 @@ export default {
         selection.addRange(newRange);
       }
       
-      this.updateStyleStates();
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
+      
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
@@ -1399,9 +1775,7 @@ export default {
 
     handleFocus() {
       // Ensure empty content has a proper placeholder for editing
-      if (!this.htmlContent.trim() || this.htmlContent === '<br>') {
-        this.$refs.editor.innerHTML = '<p><br></p>';
-      }
+      this.ensureMinimalContent();
       
       // Update style states on focus
       this.$nextTick(() => {
@@ -1417,7 +1791,7 @@ export default {
       if (content === '<p><br></p>' || content === '<br>' || content.trim() === '') {
         // Only clear if completely empty
         if (!this.modelValue || this.modelValue.trim() === '') {
-          this.$refs.editor.innerHTML = '';
+          this.$refs.editor.innerHTML = '<p><br></p>'; // Keep minimal structure
           this.$emit('update:modelValue', '');
         }
       }
@@ -1579,17 +1953,12 @@ export default {
         if (selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
           
-          const span = document.createElement('span');
-          span.className = 'math-inline';
-          span.setAttribute('data-latex', mathText);
-          span.textContent = `$${mathText}$`;
-          span.addEventListener('click', () => this.editMathFormula(span));
-          
-          range.insertNode(span);
+          const mathElement = this.createEditableMathElement(mathText, false);
+          range.insertNode(mathElement);
           
           // Position cursor after the math element
           const newRange = document.createRange();
-          newRange.setStartAfter(span);
+          newRange.setStartAfter(mathElement);
           newRange.collapse(true);
           selection.removeAllRanges();
           selection.addRange(newRange);
@@ -1606,17 +1975,12 @@ export default {
         if (selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
           
-          const div = document.createElement('div');
-          div.className = 'math-block';
-          div.setAttribute('data-latex', mathText);
-          div.textContent = `$$${mathText}$$`;
-          div.addEventListener('click', () => this.editMathFormula(div));
-          
-          range.insertNode(div);
+          const mathElement = this.createEditableMathElement(mathText, true);
+          range.insertNode(mathElement);
           
           // Position cursor after the math element
           const newRange = document.createRange();
-          newRange.setStartAfter(div);
+          newRange.setStartAfter(mathElement);
           newRange.collapse(true);
           selection.removeAllRanges();
           selection.addRange(newRange);
@@ -1732,9 +2096,41 @@ export default {
   text-align: center;
 }
 
+/* Rendered math formula styling */
+.wysiwyg-editor .math-inline-rendered {
+  cursor: pointer;
+  display: inline-block;
+  margin: 0 2px;
+  padding: 1px 2px;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.wysiwyg-editor .math-block-rendered {
+  cursor: pointer;
+  display: block;
+  margin: 16px 0;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+  transition: background-color 0.2s ease;
+}
+
 .wysiwyg-editor .math-inline:hover,
-.wysiwyg-editor .math-block:hover {
+.wysiwyg-editor .math-block:hover,
+.wysiwyg-editor .math-inline-rendered:hover,
+.wysiwyg-editor .math-block-rendered:hover {
   background-color: #e1f5fe;
   border-color: #0969da;
+}
+
+/* Ensure rendered KaTeX elements are properly styled */
+.wysiwyg-editor .math-inline-rendered .katex,
+.wysiwyg-editor .math-block-rendered .katex {
+  font-size: inherit;
+}
+
+.wysiwyg-editor .math-block-rendered .katex-display {
+  margin: 0;
 }
 </style>
