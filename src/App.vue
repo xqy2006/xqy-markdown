@@ -82,24 +82,24 @@
             <td><IconButton icon="strikethrough" tooltip="删除线" @click="add1('~~')" /></td>
         </span>
         <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')">叉乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')">除法</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')">换行</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')">根号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')">求和</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')">求积</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')">极限</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')">积分</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')">大括号</button></td>
+            <td><IconButton icon="plus" tooltip="加号" @click="add4('+','')" /></td>
+            <td><IconButton icon="minus" tooltip="减号" @click="add4('-','')" /></td>
+            <td><IconButton icon="times" tooltip="点乘" @click="add4('\\cdot','')" /></td>
+            <td><IconButton icon="times" tooltip="叉乘" @click="add4('\\times','')" /></td>
+            <td><IconButton icon="divide" tooltip="除法" @click="add4('\\div','')" /></td>
+            <td><IconButton icon="cases" tooltip="换行" @click="add4('\\\\','')" /></td>
+            <td><IconButton icon="fraction" tooltip="分数" @click="add4('\\frac{','}{}')" /></td>
+            <td><IconButton icon="power" tooltip="上标" @click="add4('^{','}')" /></td>
+            <td><IconButton icon="subscript" tooltip="下标" @click="add4('_{','}')" /></td>
+            <td><IconButton icon="sqrt" tooltip="根号" @click="add4('\\sqrt[]{','}')" /></td>
+            <td><IconButton icon="vector" tooltip="向量" @click="add4('\\overrightarrow{','}')" /></td>
+            <td><IconButton icon="arc" tooltip="弧" @click="add4('\\overset{\\frown}{','}')" /></td>
+            <td><IconButton icon="derivative" tooltip="导数" @click="addDerivative" /></td>
+            <td><IconButton icon="sum" tooltip="求和" @click="add4('\\sum_{','}^{} {}')" /></td>
+            <td><IconButton icon="product" tooltip="求积" @click="add4('\\prod_{','}^{} {}')" /></td>
+            <td><IconButton icon="limit" tooltip="极限" @click="add4('\\lim_{n \\to \\infty}{','}')" /></td>
+            <td><IconButton icon="integral" tooltip="积分" @click="add4('\\int_{}^{} {','}\\, dx')" /></td>
+            <td><IconButton icon="cases" tooltip="大括号" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')" /></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
@@ -115,7 +115,7 @@
         </div>
     </div>
 </div>
-<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+<div class="Box Box--blue" v-if="!isWysiwygMode" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>预览：</b>
     </div>
@@ -537,6 +537,17 @@ export default {
                 }
             });
         },
+
+        getExportContent() {
+            // For export functions, always use the preview content regardless of mode
+            if (this.isWysiwygMode) {
+                // In WYSIWYG mode, use the markdown content to generate HTML for export
+                return this.get_md(this.mdtext);
+            } else {
+                // In normal mode, use the preview content
+                return this.get_md(this.mdtext);
+            }
+        },
         get_filename(){
             return this.filename
         },
@@ -619,19 +630,31 @@ export default {
             }
         },
         setA4Width() {
-            // 同时设置预览容器和导出容器的宽度
-            const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            // Get export content element - either visible preview or create a temporary one
+            let exportElement = this.$refs.exportContent;
+            
+            if (this.isWysiwygMode && !exportElement) {
+                // In WYSIWYG mode, create a temporary export element
+                const tempDiv = document.createElement('div');
+                tempDiv.className = 'export-container';
+                tempDiv.innerHTML = this.getExportContent();
+                document.body.appendChild(tempDiv);
+                exportElement = tempDiv;
+                this._tempExportElement = tempDiv;
+            }
+            
+            // Also get the visible content element for preview
+            const contentElement = this.$refs.md || exportElement;
             const A4_WIDTH_PX = 794;
             
-            // 保存原始样式
+            // Save original styles
             this.originalStyles = {
-                md: {
+                md: contentElement ? {
                     width: contentElement.style.width,
                     maxWidth: contentElement.style.maxWidth,
                     margin: contentElement.style.margin,
                     padding: contentElement.style.padding
-                },
+                } : {},
                 export: {
                     width: exportElement.style.width,
                     maxWidth: exportElement.style.maxWidth,
@@ -640,40 +663,54 @@ export default {
                 }
             };
             
-            // 设置预览容器（保持原有样式）
-            contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.margin = '0 auto';
-            contentElement.style.padding = '20px';
-            
-            // 设置导出容器（与预览保持一致）
+            // Set export container style
             exportElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.margin = '0 auto';
             exportElement.style.padding = '20px';
             
-            // 强制重新布局
-            contentElement.offsetHeight;
+            // Set preview container style (if visible)
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.margin = '0 auto';
+                contentElement.style.padding = '20px';
+            }
+            
+            // Force layout
             exportElement.offsetHeight;
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.offsetHeight;
+            }
         },
 
         restoreOriginalWidth() {
             if (!this.originalStyles) return;
             
             const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            const exportElement = this.$refs.exportContent || this._tempExportElement;
             
-            // 恢复预览容器样式
-            contentElement.style.width = this.originalStyles.md.width;
-            contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
-            contentElement.style.margin = this.originalStyles.md.margin;
-            contentElement.style.padding = this.originalStyles.md.padding;
+            // Restore preview container styles
+            if (contentElement && this.originalStyles.md) {
+                contentElement.style.width = this.originalStyles.md.width;
+                contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
+                contentElement.style.margin = this.originalStyles.md.margin;
+                contentElement.style.padding = this.originalStyles.md.padding;
+            }
             
-            // 恢复导出容器样式
-            exportElement.style.width = this.originalStyles.export.width;
-            exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
-            exportElement.style.margin = this.originalStyles.export.margin;
-            exportElement.style.padding = this.originalStyles.export.padding;
+            // Restore export container styles
+            if (exportElement && this.originalStyles.export) {
+                exportElement.style.width = this.originalStyles.export.width;
+                exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
+                exportElement.style.margin = this.originalStyles.export.margin;
+                exportElement.style.padding = this.originalStyles.export.padding;
+            }
+            
+            // Clean up temporary element
+            if (this._tempExportElement) {
+                document.body.removeChild(this._tempExportElement);
+                this._tempExportElement = null;
+            }
             
             this.originalStyles = null;
         },
@@ -970,7 +1007,8 @@ export default {
                 const pageHeight = 841.89;
                 const margin = length;
                 
-                const contentElement = this.$refs.exportContent;
+                // Get the proper export element (either existing or temporary)
+                const contentElement = this.$refs.exportContent || this._tempExportElement;
                 const contentWidth = contentElement.scrollWidth;
                 const pdfContentWidth = pageWidth - margin * 2;
                 const widthRatio = pdfContentWidth / contentWidth;
@@ -1081,7 +1119,10 @@ export default {
                 // 等待布局稳定
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
-                const canvas = await html2canvas(this.$refs.exportContent, {
+                // Get the proper export element (either existing or temporary)
+                const contentElement = this.$refs.exportContent || this._tempExportElement;
+                
+                const canvas = await html2canvas(contentElement, {
                     scale: 2.5,
                     useCORS: true,
                     allowTaint: true,
@@ -1293,7 +1334,7 @@ export default {
         },
         title() {
             if (this.isWysiwygMode) {
-                this.$refs.wysiwygEditor?.insertMarkdown('# ');
+                this.$refs.wysiwygEditor?.toggleHeading();
                 return;
             }
             
@@ -1351,6 +1392,10 @@ export default {
                 link.click()
                 body.removeChild(link)
             }
+        },
+
+        addDerivative() {
+            this.add4("'", "");
         },
     },
 }
