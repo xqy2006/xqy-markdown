@@ -352,6 +352,7 @@ import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import * as PDFLib from 'pdf-lib';
 import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
 import emoji from 'markdown-it-emoji'
@@ -882,7 +883,10 @@ export default {
                 this.setA4Width();
                 await new Promise(resolve => setTimeout(resolve, 800));
 
-                const pdf = new jsPDF('', 'pt', 'a4');
+                // 使用pdf-lib替代jsPDF，支持真正的SVG嵌入
+                const { PDFDocument, rgb } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+                
                 const pageWidth = 595.28;
                 const pageHeight = 841.89;
                 const margin = length;
@@ -906,39 +910,77 @@ export default {
                 for (let i = 0; i < breakPoints.length - 1; i++) {
                     this.count = i + 1;
                     
-                    if (i > 0) {
-                        pdf.addPage();
-                    }
+                    const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
                     const start = breakPoints[i];
                     const end = breakPoints[i + 1];
-                    const pageHeight = end - start;
+                    const pageHeightPx = end - start;
 
-                    console.log(`处理第 ${i + 1} 页，范围: ${start} - ${end}, 高度: ${pageHeight}`);
+                    console.log(`处理第 ${i + 1} 页，范围: ${start} - ${end}, 高度: ${pageHeightPx}`);
 
-                    if (pageHeight <= 0) {
-                        console.warn(`页面 ${i + 1} 高度为 ${pageHeight}，跳过`);
+                    if (pageHeightPx <= 0) {
+                        console.warn(`页面 ${i + 1} 高度为 ${pageHeightPx}，跳过`);
                         continue;
                     }
 
                     // 创建SVG而不是canvas
-                    const svgData = await this.createPageSVG(contentElement, start, pageHeight);
+                    const svgData = await this.createPageSVG(contentElement, start, pageHeightPx);
                     
-                    // 将SVG嵌入PDF
-                    const imgData = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-                    
-                    // 计算PDF中的显示尺寸
-                    const pdfImageWidth = pdfContentWidth;
-                    const pdfImageHeight = (pageHeight / contentWidth) * pdfImageWidth;
-                    
-                    pdf.addImage(imgData, 'SVG', margin, margin, pdfImageWidth, pdfImageHeight);
+                    try {
+                        // 使用pdf-lib嵌入SVG，保持矢量特性和文本可选择性
+                        const svgImage = await pdfDoc.embedSvg(svgData);
+                        
+                        // 计算适合的尺寸
+                        const svgDims = svgImage.scale(widthRatio);
+                        const maxHeight = pageHeight - margin * 2;
+                        const scaledHeight = Math.min(svgDims.height, maxHeight);
+                        const scaledWidth = (scaledHeight / svgDims.height) * svgDims.width;
+                        
+                        page.drawSvg(svgImage, {
+                            x: margin,
+                            y: pageHeight - margin - scaledHeight,
+                            width: scaledWidth,
+                            height: scaledHeight,
+                        });
+                        
+                        console.log(`页面 ${i + 1} SVG嵌入成功，尺寸: ${scaledWidth}x${scaledHeight}`);
+                        
+                    } catch (svgError) {
+                        console.warn(`SVG嵌入失败，回退到Canvas模式:`, svgError);
+                        
+                        // 回退策略：使用Canvas渲染
+                        const canvas = await this.createPageCanvas(contentElement, start, pageHeightPx);
+                        const canvasImageData = canvas.toDataURL('image/jpeg', 0.95);
+                        const jpegImage = await pdfDoc.embedJpg(canvasImageData);
+                        
+                        const jpegDims = jpegImage.scale(widthRatio);
+                        const maxHeight = pageHeight - margin * 2;
+                        const scaledHeight = Math.min(jpegDims.height, maxHeight);
+                        const scaledWidth = (scaledHeight / jpegDims.height) * jpegDims.width;
+                        
+                        page.drawImage(jpegImage, {
+                            x: margin,
+                            y: pageHeight - margin - scaledHeight,
+                            width: scaledWidth,
+                            height: scaledHeight,
+                        });
+                    }
 
                     await new Promise(resolve => setTimeout(resolve, 100));
                 }
 
                 // 保存PDF
+                const pdfBytes = await pdfDoc.save();
                 const filename = this.filename ? `${this.filename}.pdf` : 'markdown-export.pdf';
-                pdf.save(filename);
+                
+                // 下载文件
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
 
                 console.log('=== 智能矢量PDF导出完成 ===');
 
@@ -1157,6 +1199,58 @@ export default {
                     el.style.cssText = inlineStyle;
                 }
             });
+        },
+
+        // Canvas回退方法 - 当SVG嵌入失败时使用
+        async createPageCanvas(contentElement, offsetTop, height) {
+            console.log(`创建页面Canvas: offsetTop=${offsetTop}, height=${height}`);
+            
+            // 创建临时容器
+            const pageContainer = document.createElement('div');
+            pageContainer.style.position = 'absolute';
+            pageContainer.style.left = '-10000px';
+            pageContainer.style.top = '0';
+            pageContainer.style.width = contentElement.offsetWidth + 'px';
+            pageContainer.style.height = height + 'px';
+            pageContainer.style.overflow = 'hidden';
+            pageContainer.style.backgroundColor = '#ffffff';
+            pageContainer.className = contentElement.className;
+            
+            document.body.appendChild(pageContainer);
+
+            const clonedContent = contentElement.cloneNode(true);
+            clonedContent.style.position = 'relative';
+            clonedContent.style.top = -offsetTop + 'px';
+            clonedContent.style.left = '0';
+            clonedContent.style.margin = '0';
+            clonedContent.style.padding = getComputedStyle(contentElement).padding;
+            
+            pageContainer.appendChild(clonedContent);
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            try {
+                const canvas = await html2canvas(pageContainer, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: 2,
+                    width: pageContainer.offsetWidth,
+                    height: pageContainer.offsetHeight,
+                    scrollX: 0,
+                    scrollY: 0,
+                    windowWidth: pageContainer.offsetWidth,
+                    windowHeight: pageContainer.offsetHeight,
+                    backgroundColor: '#ffffff',
+                    letterRendering: true,
+                    logging: false
+                });
+                return canvas;
+            } finally {
+                try {
+                    document.body.removeChild(pageContainer);
+                } catch (e) {
+                    console.warn('清理Canvas容器失败:', e);
+                }
+            }
         },
 
 
