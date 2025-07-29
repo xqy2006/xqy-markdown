@@ -124,22 +124,39 @@ export default {
         }
       });
 
-      // Custom rule for math expressions
+      // Custom rule for math expressions - handle both rendered and editable versions
       this.turndownService.addRule('math', {
         filter: (node) => {
-          return node.classList && (
+          return (node.classList && (
             node.classList.contains('katex') || 
             node.classList.contains('katex-display') ||
-            node.classList.contains('katex-inline')
-          );
+            node.classList.contains('katex-inline') ||
+            node.classList.contains('math-inline') ||
+            node.classList.contains('math-block')
+          ));
         },
         replacement: (content, node) => {
-          // Try to get the original LaTeX from data attributes or annotations
+          // Try to get the original LaTeX from data attributes first
+          const dataLatex = node.getAttribute('data-latex');
+          if (dataLatex) {
+            return node.classList.contains('math-block') ? `\n$$\n${dataLatex}\n$$\n` : ` $${dataLatex}$ `;
+          }
+          
+          // Fallback: try to get from KaTeX annotation
           const annotation = node.querySelector('.katex-mathml annotation[encoding="application/x-tex"]');
           if (annotation) {
             const latex = annotation.textContent;
             return node.classList.contains('katex-display') ? `\n$$\n${latex}\n$$\n` : ` $${latex}$ `;
           }
+          
+          // Last fallback: extract from text content
+          const textContent = node.textContent || '';
+          if (textContent.startsWith('$$') && textContent.endsWith('$$')) {
+            return `\n${textContent}\n`;
+          } else if (textContent.startsWith('$') && textContent.endsWith('$')) {
+            return ` ${textContent} `;
+          }
+          
           return content;
         }
       });
@@ -148,9 +165,66 @@ export default {
     updateHtmlContent() {
       if (this.modelValue) {
         const processedMarkdown = this.processEmptyLines(this.modelValue);
-        this.htmlContent = this.getMarkdownRenderer()(processedMarkdown);
+        let htmlContent = this.getMarkdownRenderer()(processedMarkdown);
+        
+        // Post-process to make math formulas editable in WYSIWYG mode
+        htmlContent = this.makeMatFormulasEditable(htmlContent);
+        
+        this.htmlContent = htmlContent;
       } else {
         this.htmlContent = '';
+      }
+    },
+
+    makeMatFormulasEditable(htmlContent) {
+      // Replace rendered KaTeX with editable placeholders
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      
+      // Handle inline math
+      const inlineMath = tempDiv.querySelectorAll('.katex');
+      inlineMath.forEach(katexElement => {
+        const annotation = katexElement.querySelector('annotation[encoding="application/x-tex"]');
+        if (annotation) {
+          const latex = annotation.textContent;
+          const mathSpan = document.createElement('span');
+          mathSpan.className = 'math-inline';
+          mathSpan.setAttribute('data-latex', latex);
+          mathSpan.textContent = `$${latex}$`;
+          mathSpan.addEventListener('click', () => this.editMathFormula(mathSpan));
+          katexElement.parentNode.replaceChild(mathSpan, katexElement);
+        }
+      });
+      
+      // Handle block math  
+      const blockMath = tempDiv.querySelectorAll('.katex-display');
+      blockMath.forEach(katexElement => {
+        const annotation = katexElement.querySelector('annotation[encoding="application/x-tex"]');
+        if (annotation) {
+          const latex = annotation.textContent;
+          const mathDiv = document.createElement('div');
+          mathDiv.className = 'math-block';
+          mathDiv.setAttribute('data-latex', latex);
+          mathDiv.textContent = `$$${latex}$$`;
+          mathDiv.addEventListener('click', () => this.editMathFormula(mathDiv));
+          katexElement.parentNode.replaceChild(mathDiv, katexElement);
+        }
+      });
+      
+      return tempDiv.innerHTML;
+    },
+
+    editMathFormula(mathElement) {
+      const currentLatex = mathElement.getAttribute('data-latex') || '';
+      const isBlock = mathElement.classList.contains('math-block');
+      
+      const newLatex = prompt(`编辑${isBlock ? '块级' : '行内'}数学公式:`, currentLatex);
+      if (newLatex !== null) {
+        mathElement.setAttribute('data-latex', newLatex);
+        mathElement.textContent = isBlock ? `$$${newLatex}$$` : `$${newLatex}$`;
+        
+        // Trigger input event to update the content
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
       }
     },
 
@@ -230,27 +304,97 @@ export default {
       if (selection.rangeCount === 0) return;
       
       const range = selection.getRangeAt(0);
-      const element = range.commonAncestorContainer.nodeType === Node.TEXT_NODE 
-        ? range.commonAncestorContainer.parentElement 
-        : range.commonAncestorContainer;
+      
+      // Smart style detection: handle both selection and cursor position
+      let styleElement = null;
+      
+      if (range.collapsed) {
+        // No selection - check style at cursor position
+        styleElement = this.getStyleElementAtCursor(range);
+      } else {
+        // Has selection - check style of selected content
+        styleElement = this.getStyleElementOfSelection(range);
+      }
       
       // Update current styles
       this.currentStyles = {
-        bold: this.isStyleActive(element, 'strong, b'),
-        italic: this.isStyleActive(element, 'em, i'),
-        underline: this.isStyleActive(element, 'u'),
-        code: this.isStyleActive(element, 'code'),
-        strikethrough: this.isStyleActive(element, 'del, s, strike')
+        bold: this.isStyleActive(styleElement, 'strong, b'),
+        italic: this.isStyleActive(styleElement, 'em, i'),
+        underline: this.isStyleActive(styleElement, 'u'),
+        code: this.isStyleActive(styleElement, 'code'),
+        strikethrough: this.isStyleActive(styleElement, 'del, s, strike')
       };
       
       // Update current heading level
-      this.currentHeadingLevel = this.getCurrentHeadingLevel(element);
+      this.currentHeadingLevel = this.getCurrentHeadingLevel(styleElement);
       
       // Emit style state update for parent component
       this.$emit('style-state-update', {
         styles: this.currentStyles,
         headingLevel: this.currentHeadingLevel
       });
+    },
+
+    getStyleElementAtCursor(range) {
+      // When no selection, check the style at cursor position
+      const container = range.startContainer;
+      
+      if (container.nodeType === Node.TEXT_NODE) {
+        const offset = range.startOffset;
+        
+        // If cursor is at the beginning of text, check previous element's style
+        if (offset === 0) {
+          const prevElement = this.getPreviousStyledElement(container);
+          if (prevElement) {
+            return prevElement;
+          }
+        }
+        
+        // Check parent element for style
+        return container.parentElement;
+      }
+      
+      return container;
+    },
+
+    getStyleElementOfSelection(range) {
+      // When has selection, analyze the selected content
+      const container = range.commonAncestorContainer;
+      
+      if (container.nodeType === Node.TEXT_NODE) {
+        return container.parentElement;
+      }
+      
+      return container;
+    },
+
+    getPreviousStyledElement(textNode) {
+      // Find the previous text node and check its style
+      let currentNode = textNode;
+      
+      while (currentNode) {
+        if (currentNode.previousSibling) {
+          currentNode = currentNode.previousSibling;
+          
+          // If it's a text node with content, check its parent
+          if (currentNode.nodeType === Node.TEXT_NODE && currentNode.textContent.trim()) {
+            return currentNode.parentElement;
+          }
+          
+          // If it's an element with text content, return it
+          if (currentNode.nodeType === Node.ELEMENT_NODE && currentNode.textContent.trim()) {
+            return currentNode;
+          }
+        } else {
+          // Move up to parent and continue searching
+          currentNode = currentNode.parentNode;
+          if (currentNode === this.$refs.editor) {
+            break;
+          }
+        }
+      }
+      
+      return null;
     },
 
     isStyleActive(element, selector) {
@@ -757,27 +901,131 @@ export default {
     },
 
     toggleBold() {
-      document.execCommand('bold', false, null);
-      this.updateStyleStates();
-      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      this.toggleFormatWithContext('bold');
     },
 
     toggleItalic() {
-      document.execCommand('italic', false, null);
-      this.updateStyleStates();
-      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      this.toggleFormatWithContext('italic');
     },
 
     toggleUnderline() {
-      document.execCommand('underline', false, null);
+      this.toggleFormatWithContext('underline');
+    },
+
+    toggleStrikethrough() {
+      this.toggleFormatWithContext('strikeThrough');
+    },
+
+    toggleFormatWithContext(formatType) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      
+      if (range.collapsed) {
+        // No selection - apply formatting for next input
+        this.applyFormatToNextInput(formatType, range);
+      } else {
+        // Has selection - apply formatting to selected content
+        this.applyFormatToSelection(formatType);
+      }
+      
       this.updateStyleStates();
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
-    toggleStrikethrough() {
-      document.execCommand('strikeThrough', false, null);
-      this.updateStyleStates();
-      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    applyFormatToNextInput(formatType, range) {
+      // Check current style state
+      const styleElement = this.getStyleElementAtCursor(range);
+      const isCurrentlyActive = this.isFormatActive(formatType, styleElement);
+      
+      if (isCurrentlyActive) {
+        // Remove formatting by inserting a neutral span
+        this.insertNeutralSpan(range);
+      } else {
+        // Apply formatting by inserting a formatted span
+        this.insertFormattedSpan(formatType, range);
+      }
+    },
+
+    applyFormatToSelection(formatType) {
+      // Use execCommand for selected content
+      const commandMap = {
+        'bold': 'bold',
+        'italic': 'italic', 
+        'underline': 'underline',
+        'strikeThrough': 'strikeThrough'
+      };
+      
+      const command = commandMap[formatType];
+      if (command) {
+        document.execCommand(command, false, null);
+      }
+    },
+
+    isFormatActive(formatType, element) {
+      const selectorMap = {
+        'bold': 'strong, b',
+        'italic': 'em, i',
+        'underline': 'u',
+        'strikeThrough': 'del, s, strike'
+      };
+      
+      const selector = selectorMap[formatType];
+      return selector ? this.isStyleActive(element, selector) : false;
+    },
+
+    insertNeutralSpan(range) {
+      // Insert a span that breaks the current formatting
+      const span = document.createElement('span');
+      span.style.fontWeight = 'normal';
+      span.style.fontStyle = 'normal';
+      span.style.textDecoration = 'none';
+      span.appendChild(document.createTextNode('\u200B')); // Zero-width space
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    },
+
+    insertFormattedSpan(formatType, range) {
+      // Insert a span with the desired formatting
+      const span = document.createElement('span');
+      
+      switch (formatType) {
+        case 'bold':
+          span.style.fontWeight = 'bold';
+          break;
+        case 'italic':
+          span.style.fontStyle = 'italic';
+          break;
+        case 'underline':
+          span.style.textDecoration = 'underline';
+          break;
+        case 'strikeThrough':
+          span.style.textDecoration = 'line-through';
+          break;
+      }
+      
+      span.appendChild(document.createTextNode('\u200B')); // Zero-width space
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
     },
 
     toggleCode() {
@@ -785,7 +1033,6 @@ export default {
       if (!selection.rangeCount) return;
       
       const range = selection.getRangeAt(0);
-      const selectedText = range.toString();
       
       // Check if we're already in a code element
       const container = range.commonAncestorContainer;
@@ -798,25 +1045,52 @@ export default {
         // Remove code formatting
         const textNode = document.createTextNode(codeElement.textContent);
         codeElement.parentNode.replaceChild(textNode, codeElement);
+        
+        // Position cursor in the text node
+        const newRange = document.createRange();
+        newRange.setStart(textNode, Math.min(range.startOffset, textNode.textContent.length));
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } else if (range.collapsed) {
+        // No selection - apply code for next input
+        this.applyCodeToNextInput(range);
       } else {
-        // Add code formatting
-        if (selectedText) {
-          const codeElement = document.createElement('code');
-          codeElement.textContent = selectedText;
-          range.deleteContents();
-          range.insertNode(codeElement);
-          
-          // Position cursor after the code element
-          const newRange = document.createRange();
-          newRange.setStartAfter(codeElement);
-          newRange.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        }
+        // Has selection - apply code to selected content
+        const selectedText = range.toString();
+        const codeElement = document.createElement('code');
+        codeElement.textContent = selectedText;
+        
+        range.deleteContents();
+        range.insertNode(codeElement);
+        
+        // Position cursor after the code element
+        const newRange = document.createRange();
+        newRange.setStartAfter(codeElement);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
       }
       
       this.updateStyleStates();
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    applyCodeToNextInput(range) {
+      // Insert a code span for next input
+      const codeElement = document.createElement('code');
+      codeElement.appendChild(document.createTextNode('\u200B')); // Zero-width space
+      
+      range.insertNode(codeElement);
+      
+      // Position cursor inside the code element
+      const newRange = document.createRange();
+      newRange.setStart(codeElement.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
     },
 
     insertColorText(color) {
@@ -824,9 +1098,24 @@ export default {
       if (!selection.rangeCount) return;
       
       const range = selection.getRangeAt(0);
-      const selectedText = range.toString();
       
-      if (selectedText) {
+      // Check if we're already in a colored element
+      const container = range.commonAncestorContainer;
+      const element = container.nodeType === Node.TEXT_NODE 
+        ? container.parentElement 
+        : container;
+      
+      const existingColorElement = element.closest(`font[color="${color}"]`);
+      
+      if (existingColorElement) {
+        // Remove color formatting - toggle off
+        this.removeColorFormatting(existingColorElement, range);
+      } else if (range.collapsed) {
+        // No selection - apply color for next input
+        this.applyColorToNextInput(color, range);
+      } else {
+        // Has selection - apply color to selected content
+        const selectedText = range.toString();
         const fontElement = document.createElement('font');
         fontElement.setAttribute('color', color);
         fontElement.textContent = selectedText;
@@ -840,9 +1129,44 @@ export default {
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
-        
-        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
       }
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+
+    removeColorFormatting(colorElement, range) {
+      // Replace the font element with plain text
+      const textContent = colorElement.textContent;
+      const textNode = document.createTextNode(textContent);
+      
+      colorElement.parentNode.replaceChild(textNode, colorElement);
+      
+      // Position cursor appropriately
+      const newRange = document.createRange();
+      newRange.setStart(textNode, Math.min(range.startOffset, textContent.length));
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    },
+
+    applyColorToNextInput(color, range) {
+      // Insert a colored span for next input
+      const span = document.createElement('font');
+      span.setAttribute('color', color);
+      span.appendChild(document.createTextNode('\u200B')); // Zero-width space
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
     },
 
     insertHighlight() {
@@ -1013,14 +1337,22 @@ export default {
       if (!this.htmlContent.trim() || this.htmlContent === '<br>') {
         this.$refs.editor.innerHTML = '<p><br></p>';
       }
+      
+      // Update style states on focus
+      this.$nextTick(() => {
+        this.updateStyleStates();
+      });
     },
 
     handleBlur() {
-      // Clean up empty paragraphs when losing focus
+      // Clean up empty paragraphs when losing focus, but preserve structure
       const content = this.$refs.editor.innerHTML;
-      if (content === '<p><br></p>' || content === '<br>') {
-        this.$refs.editor.innerHTML = '';
-        this.$emit('update:modelValue', '');
+      if (content === '<p><br></p>' || content === '<br>' || content.trim() === '') {
+        // Only clear if completely empty
+        if (!this.modelValue || this.modelValue.trim() === '') {
+          this.$refs.editor.innerHTML = '';
+          this.$emit('update:modelValue', '');
+        }
       }
     },
 
@@ -1174,17 +1506,54 @@ export default {
     },
 
     insertMathInline() {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      
       const mathText = prompt('请输入LaTeX公式:');
       if (mathText) {
-        const span = document.createElement('span');
-        span.className = 'math-inline';
-        span.textContent = `$${mathText}$`;
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          
+          const span = document.createElement('span');
+          span.className = 'math-inline';
+          span.setAttribute('data-latex', mathText);
+          span.textContent = `$${mathText}$`;
+          span.addEventListener('click', () => this.editMathFormula(span));
+          
+          range.insertNode(span);
+          
+          // Position cursor after the math element
+          const newRange = document.createRange();
+          newRange.setStartAfter(span);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
         
-        const range = selection.getRangeAt(0);
-        range.insertNode(span);
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    },
+
+    insertMathBlock() {
+      const mathText = prompt('请输入LaTeX块级公式:');
+      if (mathText) {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          
+          const div = document.createElement('div');
+          div.className = 'math-block';
+          div.setAttribute('data-latex', mathText);
+          div.textContent = `$$${mathText}$$`;
+          div.addEventListener('click', () => this.editMathFormula(div));
+          
+          range.insertNode(div);
+          
+          // Position cursor after the math element
+          const newRange = document.createRange();
+          newRange.setStartAfter(div);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
         
         this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
       }
@@ -1224,6 +1593,21 @@ export default {
   box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
 }
 
+/* Ensure empty lines are properly handled and clickable */
+.wysiwyg-editor p:empty::before {
+  content: '\00a0'; /* Non-breaking space */
+  color: transparent;
+}
+
+.wysiwyg-editor p:empty {
+  min-height: 1.2em; /* Ensure empty paragraphs have height */
+}
+
+.wysiwyg-editor br:only-child {
+  display: block;
+  min-height: 1.2em;
+}
+
 /* Ensure code blocks are properly styled in edit mode */
 .wysiwyg-editor pre {
   background-color: #f6f8fa;
@@ -1258,5 +1642,32 @@ export default {
 .wysiwyg-editor th {
   background-color: #f6f8fa;
   font-weight: 600;
+}
+
+/* Math formula styling */
+.wysiwyg-editor .math-inline {
+  background-color: #f6f8fa;
+  border: 1px dashed #d1d9e0;
+  border-radius: 3px;
+  padding: 2px 4px;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.wysiwyg-editor .math-block {
+  background-color: #f6f8fa;
+  border: 1px dashed #d1d9e0;
+  border-radius: 6px;
+  padding: 16px;
+  cursor: pointer;
+  display: block;
+  margin: 16px 0;
+  text-align: center;
+}
+
+.wysiwyg-editor .math-inline:hover,
+.wysiwyg-editor .math-block:hover {
+  background-color: #e1f5fe;
+  border-color: #0969da;
 }
 </style>
