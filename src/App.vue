@@ -53,19 +53,19 @@
         </div>
     </div>
     <div class="Box-row" id="buttons">
-        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')">img</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()">显示Tex工具箱</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()">隐藏Tex工具箱</button></td>
+        <span class="BtnGroup d-block toolbar-row primary-toolbar" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton :icon="currentHeadingIcon" tooltip="标题" @click="handleHeading()" /></td>
+            <td><IconButton icon="code-block" tooltip="代码块" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="code" tooltip="单行代码" :variant="codeButtonClass.replace('btn-', '')" @click="handleCode()" /></td>
+            <td><IconButton icon="image" tooltip="图片" @click="handleImage()" /></td>
+            <td><IconButton icon="quote" tooltip="引用" @click="handleQuote()" /></td>
+            <td><IconButton icon="list" tooltip="无序列表" @click="handleList()" /></td>
+            <td><IconButton icon="check-list" tooltip="任务列表" @click="handleTaskList()" /></td>
+            <td><IconButton icon="hash" tooltip="目录" @click="handleTOC()" /></td>
+            <td><IconButton icon="hr" tooltip="分割线" @click="handleHR()" /></td>
+            <td><IconButton icon="function" tooltip="Tex公式" @click="handleMath()" /></td>
+            <td><IconButton icon="eye" tooltip="显示Tex工具箱" v-if="!tex" @click="opentex()" /></td>
+            <td><IconButton icon="eye-off" tooltip="隐藏Tex工具箱" v-if="tex" @click="closetex()" /></td>
             <td><button 
                 class="btn btn-sm" 
                 :class="isWysiwygMode ? 'btn-primary' : 'btn-invisible'" 
@@ -73,33 +73,31 @@
                 {{ isWysiwygMode ? 'WYSIWYG模式' : '切换到WYSIWYG' }}
             </button></td>
         </span>
-        <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')">标红</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
+        <span class="BtnGroup d-block toolbar-row" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton icon="bold" tooltip="粗体 (Ctrl+B)" :variant="boldButtonClass.replace('btn-', '')" @click="handleBold()" /></td>
+            <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" :variant="italicButtonClass.replace('btn-', '')" @click="handleItalic()" /></td>
+            <td><IconButton icon="underline" tooltip="下划线" :variant="underlineButtonClass.replace('btn-', '')" @click="handleUnderline()" /></td>
+            <td><IconButton icon="paint" tooltip="标红" @click="handleColorText('red')" /></td>
+            <td><IconButton icon="highlight" tooltip="高亮" @click="handleHighlight()" /></td>
+            <td><IconButton icon="strikethrough" tooltip="删除线" :variant="strikethroughButtonClass.replace('btn-', '')" @click="handleStrikethrough()" /></td>
         </span>
-        <span class="BtnGroup d-block" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')">叉乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')">除法</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')">换行</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')">根号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')">求和</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')">求积</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')">极限</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')">积分</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')">大括号</button></td>
+        <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
+            <td><IconButton icon="plus" tooltip="加号 +" @click="add4('+','')" /></td>
+            <td><IconButton icon="minus" tooltip="减号 -" @click="add4('-','')" /></td>
+            <td><IconButton icon="times" tooltip="乘号 ×" @click="add4('\\times','')" /></td>
+            <td><IconButton icon="divide" tooltip="除号 ÷" @click="add4('\\div','')" /></td>
+            <td><IconButton icon="fraction" tooltip="分数" @click="add4('\\frac{','}{}')" /></td>
+            <td><IconButton icon="power" tooltip="上标" @click="add4('^{','}')" /></td>
+            <td><IconButton icon="subscript" tooltip="下标" @click="add4('_{','}')" /></td>
+            <td><IconButton icon="sqrt" tooltip="根号" @click="add4('\\sqrt{','}')" /></td>
+            <td><IconButton icon="vector" tooltip="向量" @click="add4('\\overrightarrow{','}')" /></td>
+            <td><IconButton icon="sum" tooltip="求和 Σ" @click="add4('\\sum_{','}^{} {}')" /></td>
+            <td><IconButton icon="product" tooltip="求积 Π" @click="add4('\\prod_{','}^{} {}')" /></td>
+            <td><IconButton icon="limit" tooltip="极限" @click="add4('\\lim_{x \\to ','}{}')" /></td>
+            <td><IconButton icon="integral" tooltip="积分 ∫" @click="add4('\\int_{','}^{} {} dx')" /></td>
+            <td><IconButton icon="derivative" tooltip="导数 '" @click="addDerivative" /></td>
+            <td><IconButton icon="cases" tooltip="大括号" @click="add4('\\begin{cases}','\\\\\\end{cases}')" /></td>
+            <td><IconButton icon="newline" tooltip="换行" @click="add4('\\\\','')" /></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
@@ -110,12 +108,13 @@
             <WysiwygEditor 
                 v-model="mdtext" 
                 :get-markdown-renderer="getMarkdownRenderer"
+                @style-state-update="handleStyleStateUpdate"
                 ref="wysiwygEditor"
             />
         </div>
     </div>
 </div>
-<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+<div class="Box Box--blue" v-if="!isWysiwygMode" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
     <div class="Box-header">
         <b>预览：</b>
     </div>
@@ -247,6 +246,99 @@ code {
     }
 }
 
+/* Enhanced mobile responsiveness for toolbar */
+@media (max-width: 768px) {
+    /* Make toolbar buttons more touch-friendly */
+    .BtnGroup {
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 8px !important;
+    }
+    
+    .BtnGroup td {
+        display: block;
+        margin: 0;
+    }
+    
+    /* Reduce margins on mobile */
+    #buttons {
+        padding: 0px 8px;
+    }
+    
+    #mytextarea {
+        padding: 5px 8px 16px;
+    }
+    
+    /* Make editor full width on mobile */
+    .wysiwyg-editor {
+        font-size: 16px; /* Prevent zoom on iOS */
+        line-height: 1.5;
+    }
+    
+    /* Responsive export container */
+    .export-container {
+        padding: 15px;
+    }
+}
+
+/* Extra small screens (phones) */
+@media (max-width: 480px) {
+    /* Collapsible toolbar for very small screens */
+    .toolbar-row {
+        margin-bottom: 8px;
+    }
+    
+    .toolbar-row:not(.primary-toolbar) {
+        display: none;
+    }
+    
+    .toolbar-row.expanded {
+        display: block;
+    }
+    
+    /* Larger touch targets */
+    .icon-button {
+        min-width: 44px !important;
+        min-height: 44px !important;
+        margin: 2px;
+    }
+    
+    /* Compact layout */
+    .Box {
+        margin: 10px 8px !important;
+    }
+    
+    .Box-header {
+        padding: 12px;
+        font-size: 14px;
+    }
+    
+    /* Hide secondary UI elements on very small screens */
+    .setting-group small {
+        display: none;
+    }
+    
+    /* Optimize editor height */
+    .wysiwyg-editor, 
+    textarea.form-control {
+        min-height: 200px;
+        font-size: 16px; /* Prevent zoom */
+    }
+}
+
+/* Landscape orientation optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .wysiwyg-editor,
+    textarea.form-control {
+        min-height: 150px;
+    }
+    
+    .toolbar-row {
+        margin-bottom: 4px;
+    }
+}
+
 @keyframes octocat-wave {
 
     0%,
@@ -310,10 +402,12 @@ import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
 import WysiwygEditor from './components/WysiwygEditor.vue'
+import IconButton from './components/IconButton.vue'
 
 export default {
     components: {
-        WysiwygEditor
+        WysiwygEditor,
+        IconButton
     },
     data() {
         return {
@@ -321,6 +415,7 @@ export default {
             filename: '',
             pdfdown: false,
             pngdown: false,
+            jpgdown: false,
             mddown: false,
             htmldown: false,
             mdup: false,
@@ -334,6 +429,48 @@ export default {
             isInitializing: true, // 新增：标记是否正在初始化
             isWysiwygMode: false, // 新增：标记是否为WYSIWYG模式
             markdownRenderer: null, // 新增：缓存markdown渲染器
+            wysiwygStyleStates: {
+                bold: false,
+                italic: false,
+                underline: false,
+                code: false,
+                strikethrough: false
+            },
+            currentHeadingLevel: 0,
+            headingIcons: {
+                0: 'heading-1', // 普通文本，显示将变为h1
+                1: 'heading-2', // h1，显示将变为h2
+                2: 'heading-3', // h2，显示将变为h3
+                3: 'heading-4', // h3，显示将变为h4
+                4: 'heading-5', // h4，显示将变为h5
+                5: 'heading-6', // h5，显示将变为h6
+                6: 'heading-1'  // h6，显示将变为h1（循环）
+            }
+        }
+    },
+    computed: {
+        currentHeadingIcon() {
+            return this.headingIcons[this.currentHeadingLevel] || 'heading-1';
+        },
+        
+        boldButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.bold ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        italicButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.italic ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        underlineButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.underline ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        codeButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.code ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        strikethroughButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.strikethrough ? 'btn-primary' : 'btn-invisible';
         }
     },
     created(){
@@ -442,6 +579,17 @@ export default {
                 }
             });
         },
+
+        getExportContent() {
+            // For export functions, always use the preview content regardless of mode
+            if (this.isWysiwygMode) {
+                // In WYSIWYG mode, use the markdown content to generate HTML for export
+                return this.get_md(this.mdtext);
+            } else {
+                // In normal mode, use the preview content
+                return this.get_md(this.mdtext);
+            }
+        },
         get_filename(){
             return this.filename
         },
@@ -524,19 +672,31 @@ export default {
             }
         },
         setA4Width() {
-            // 同时设置预览容器和导出容器的宽度
-            const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            // Get export content element - either visible preview or create a temporary one
+            let exportElement = this.$refs.exportContent;
+            
+            if (this.isWysiwygMode && !exportElement) {
+                // In WYSIWYG mode, create a temporary export element
+                const tempDiv = document.createElement('div');
+                tempDiv.className = 'export-container';
+                tempDiv.innerHTML = this.getExportContent();
+                document.body.appendChild(tempDiv);
+                exportElement = tempDiv;
+                this._tempExportElement = tempDiv;
+            }
+            
+            // Also get the visible content element for preview
+            const contentElement = this.$refs.md || exportElement;
             const A4_WIDTH_PX = 794;
             
-            // 保存原始样式
+            // Save original styles
             this.originalStyles = {
-                md: {
+                md: contentElement ? {
                     width: contentElement.style.width,
                     maxWidth: contentElement.style.maxWidth,
                     margin: contentElement.style.margin,
                     padding: contentElement.style.padding
-                },
+                } : {},
                 export: {
                     width: exportElement.style.width,
                     maxWidth: exportElement.style.maxWidth,
@@ -545,40 +705,54 @@ export default {
                 }
             };
             
-            // 设置预览容器（保持原有样式）
-            contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
-            contentElement.style.margin = '0 auto';
-            contentElement.style.padding = '20px';
-            
-            // 设置导出容器（与预览保持一致）
+            // Set export container style
             exportElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
             exportElement.style.margin = '0 auto';
             exportElement.style.padding = '20px';
             
-            // 强制重新布局
-            contentElement.offsetHeight;
+            // Set preview container style (if visible)
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.style.width = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.maxWidth = `${A4_WIDTH_PX * this.exportScale}px`;
+                contentElement.style.margin = '0 auto';
+                contentElement.style.padding = '20px';
+            }
+            
+            // Force layout
             exportElement.offsetHeight;
+            if (contentElement && contentElement !== exportElement) {
+                contentElement.offsetHeight;
+            }
         },
 
         restoreOriginalWidth() {
             if (!this.originalStyles) return;
             
             const contentElement = this.$refs.md;
-            const exportElement = this.$refs.exportContent;
+            const exportElement = this.$refs.exportContent || this._tempExportElement;
             
-            // 恢复预览容器样式
-            contentElement.style.width = this.originalStyles.md.width;
-            contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
-            contentElement.style.margin = this.originalStyles.md.margin;
-            contentElement.style.padding = this.originalStyles.md.padding;
+            // Restore preview container styles
+            if (contentElement && this.originalStyles.md) {
+                contentElement.style.width = this.originalStyles.md.width;
+                contentElement.style.maxWidth = this.originalStyles.md.maxWidth;
+                contentElement.style.margin = this.originalStyles.md.margin;
+                contentElement.style.padding = this.originalStyles.md.padding;
+            }
             
-            // 恢复导出容器样式
-            exportElement.style.width = this.originalStyles.export.width;
-            exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
-            exportElement.style.margin = this.originalStyles.export.margin;
-            exportElement.style.padding = this.originalStyles.export.padding;
+            // Restore export container styles
+            if (exportElement && this.originalStyles.export) {
+                exportElement.style.width = this.originalStyles.export.width;
+                exportElement.style.maxWidth = this.originalStyles.export.maxWidth;
+                exportElement.style.margin = this.originalStyles.export.margin;
+                exportElement.style.padding = this.originalStyles.export.padding;
+            }
+            
+            // Clean up temporary element
+            if (this._tempExportElement) {
+                document.body.removeChild(this._tempExportElement);
+                this._tempExportElement = null;
+            }
             
             this.originalStyles = null;
         },
@@ -875,7 +1049,8 @@ export default {
                 const pageHeight = 841.89;
                 const margin = length;
                 
-                const contentElement = this.$refs.exportContent;
+                // Get the proper export element (either existing or temporary)
+                const contentElement = this.$refs.exportContent || this._tempExportElement;
                 const contentWidth = contentElement.scrollWidth;
                 const pdfContentWidth = pageWidth - margin * 2;
                 const widthRatio = pdfContentWidth / contentWidth;
@@ -986,7 +1161,10 @@ export default {
                 // 等待布局稳定
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
-                const canvas = await html2canvas(this.$refs.exportContent, {
+                // Get the proper export element (either existing or temporary)
+                const contentElement = this.$refs.exportContent || this._tempExportElement;
+                
+                const canvas = await html2canvas(contentElement, {
                     scale: 2.5,
                     useCORS: true,
                     allowTaint: true,
@@ -1198,7 +1376,7 @@ export default {
         },
         title() {
             if (this.isWysiwygMode) {
-                this.$refs.wysiwygEditor?.insertMarkdown('# ');
+                this.$refs.wysiwygEditor?.toggleHeading();
                 return;
             }
             
@@ -1255,6 +1433,181 @@ export default {
 
                 link.click()
                 body.removeChild(link)
+            }
+        },
+
+        addDerivative() {
+            this.add4("'", "");
+        },
+
+        // Handle WYSIWYG style state updates
+        handleStyleStateUpdate(data) {
+            this.wysiwygStyleStates = data.styles;
+            this.currentHeadingLevel = data.headingLevel;
+        },
+
+        // Unified toolbar handlers that work in both modes
+        handleHeading() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleHeading();
+            } else {
+                this.title();
+            }
+        },
+
+        handleBold() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleBold();
+            } else {
+                this.add1('**');
+            }
+        },
+
+        handleItalic() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleItalic();
+            } else {
+                this.add1('*');
+            }
+        },
+
+        handleUnderline() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleUnderline();
+            } else {
+                this.add4('<u>', '</u>');
+            }
+        },
+
+        handleStrikethrough() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleStrikethrough();
+            } else {
+                this.add1('~~');
+            }
+        },
+
+        handleCode() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.toggleCode();
+            } else {
+                this.add1('`');
+            }
+        },
+
+        handleCodeBlock() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertCodeBlock();
+            } else {
+                this.add1('\n```\n');
+            }
+        },
+
+        handleQuote() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertBlockQuote();
+            } else {
+                this.add2('> ');
+            }
+        },
+
+        handleList() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertUnorderedList();
+            } else {
+                this.add2('- ');
+            }
+        },
+
+        handleTaskList() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertTaskList();
+            } else {
+                this.add2('- [ ] ');
+            }
+        },
+
+        handleImage() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertImage();
+            } else {
+                this.add4('![](', ')');
+            }
+        },
+
+        handleHR() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertHorizontalRule();
+            } else {
+                this.add3('------');
+            }
+        },
+
+        handleTOC() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertTOC();
+            } else {
+                this.add3('[[TOC]]');
+            }
+        },
+
+        handleMath() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertMathInline();
+            } else {
+                this.add4(' $', '$ ');
+            }
+        },
+
+        handleColorText(color) {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertColorText(color);
+            } else {
+                this.add4(`<font color="${color}">`, '</font>');
+            }
+        },
+
+        handleHighlight() {
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.insertHighlight();
+            } else {
+                this.add4('<mark>', '</mark>');
+            }
+        },
+
+        // Export functionality improvements for WYSIWYG mode
+        async exportContent(type) {
+            const originalMode = this.isWysiwygMode;
+            
+            try {
+                if (originalMode) {
+                    // Temporarily switch to normal mode for export
+                    this.isWysiwygMode = false;
+                    await this.$nextTick();
+                }
+                
+                // Execute the appropriate export function
+                switch (type) {
+                    case 'pdf':
+                        await this.to_pdf();
+                        break;
+                    case 'png':
+                        await this.to_png();
+                        break;
+                    case 'html':
+                        this.to_html();
+                        break;
+                    case 'md':
+                        this.to_md();
+                        break;
+                }
+            } finally {
+                if (originalMode) {
+                    // Restore WYSIWYG mode
+                    this.isWysiwygMode = true;
+                    await this.$nextTick();
+                    this.$refs.wysiwygEditor?.focus();
+                }
             }
         },
     },
