@@ -427,7 +427,7 @@ export default {
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
-            isWysiwygMode: false, // 新增：标记是否为WYSIWYG模式
+            isWysiwygMode: true, // 新增：标记是否为WYSIWYG模式，默认启用WYSIWYG
             markdownRenderer: null, // 新增：缓存markdown渲染器
             wysiwygStyleStates: {
                 bold: false,
@@ -568,6 +568,16 @@ export default {
         },
 
         toggleEditMode() {
+            // Force immediate sync before mode switch
+            if (this.isWysiwygMode && this.$refs.wysiwygEditor) {
+                // Cancel any pending debounced updates
+                if (this.$refs.wysiwygEditor.debouncedUpdate) {
+                    this.$refs.wysiwygEditor.debouncedUpdate.cancel();
+                }
+                // Force immediate content sync
+                this.$refs.wysiwygEditor.performContentUpdate(this.$refs.wysiwygEditor.$refs.editor.innerHTML);
+            }
+            
             this.isWysiwygMode = !this.isWysiwygMode;
             
             // Focus the appropriate editor after mode switch
