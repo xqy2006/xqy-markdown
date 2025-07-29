@@ -50,6 +50,14 @@
                 <input v-model.number="exportScale" class="form-control input-sm" type="number" min="0.5" max="3" step="0.1" style="width: 80px;" />
                 <small class="text-gray">(1.0 = 标准A4宽度)</small>
             </div>
+            <div class="setting-group">
+                <label>PDF导出模式：</label>
+                <select v-model="pdfExportMode" class="form-control input-sm" style="width: 120px;">
+                    <option value="vector">矢量化</option>
+                    <option value="screenshot">截图</option>
+                </select>
+                <small class="text-gray">(矢量化：文本可选，清晰度高)</small>
+            </div>
         </div>
     </div>
     <div class="Box-row" id="buttons">
@@ -287,6 +295,7 @@ code {
 import hljs from 'highlight.js/lib/common';
 import MarkdownIt from 'markdown-it';
 import html2canvas from 'html2canvas';
+import html2pdf from 'html2pdf.js';
 import jsPDF from 'jspdf';
 import FileSaver from 'file-saver';
 import taskLists from 'markdown-it-task-lists'
@@ -311,6 +320,7 @@ export default {
             sum: 1,
             tex:false,
             exportScale: 1.0, // 新增：导出缩放倍率
+            pdfExportMode: 'vector', // 新增：PDF导出模式
             originalStyles: null, // 保存原始样式
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
@@ -360,6 +370,14 @@ export default {
                     this.debouncedSave();
                 }
             }
+        },
+        // 监听 PDF导出模式变化，自动保存
+        pdfExportMode: {
+            handler() {
+                if (!this.isInitializing) {
+                    this.debouncedSave();
+                }
+            }
         }
     },
 
@@ -375,6 +393,7 @@ export default {
                     const data = JSON.parse(savedData);
                     this.mdtext = data.content || '';
                     this.filename = data.filename || '';
+                    this.pdfExportMode = data.pdfExportMode || 'vector';
                     
                     if (this.mdtext || this.filename) {
                         this.showSaveStatus('已恢复上次编辑的内容');
@@ -391,6 +410,7 @@ export default {
                 const dataToSave = {
                     content: this.mdtext,
                     filename: this.filename,
+                    pdfExportMode: this.pdfExportMode,
                     lastSaved: new Date().toISOString()
                 };
                 
@@ -442,6 +462,7 @@ export default {
             if (confirm('确定要清除所有内容吗？这将清空文件名和Markdown内容。')) {
                 this.mdtext = '';
                 this.filename = '';
+                this.pdfExportMode = 'vector';
                 // 清除内容后会自动保存空内容
             }
         },
@@ -782,8 +803,85 @@ export default {
             return bestBreakPoint;
         },
 
-        // 改进的PDF导出函数
+        // 新增：矢量化PDF导出方法
+        async to_pdf_vector() {
+            this.pdfdown = true;
+            this.count = 0;
+            this.sum = 1;
+            
+            try {
+                // 设置A4宽度并等待布局稳定
+                this.setA4Width();
+                await new Promise(resolve => setTimeout(resolve, 800));
+                
+                const contentElement = this.$refs.exportContent;
+                const filename = (this.filename || 'undefined') + '.pdf';
+                
+                console.log('=== 矢量化PDF导出开始 ===');
+                
+                // 配置html2pdf选项
+                const options = {
+                    margin: 20,
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 1.0 },
+                    html2canvas: { 
+                        scale: this.exportScale * 1.5,
+                        useCORS: true,
+                        allowTaint: true,
+                        backgroundColor: '#ffffff',
+                        logging: false
+                    },
+                    jsPDF: { 
+                        unit: 'pt', 
+                        format: 'a4', 
+                        orientation: 'portrait',
+                        compress: true
+                    },
+                    pagebreak: { 
+                        mode: ['avoid-all', 'css', 'legacy'],
+                        before: ['.page-break-before'],
+                        after: ['.page-break-after'],
+                        avoid: ['pre', 'blockquote', 'table', '.hljs']
+                    }
+                };
+                
+                // 使用html2pdf进行矢量化导出
+                await html2pdf()
+                    .from(contentElement)
+                    .set(options)
+                    .outputPdf('dataurlstring')
+                    .then((pdfAsString) => {
+                        this.count = 1;
+                        // 创建下载链接
+                        const link = document.createElement('a');
+                        link.href = pdfAsString;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        console.log('矢量化PDF导出完成');
+                    });
+                
+            } catch (error) {
+                console.error('矢量化PDF导出失败:', error);
+                alert('矢量化PDF导出失败: ' + error.message);
+            } finally {
+                this.restoreOriginalWidth();
+                this.pdfdown = false;
+            }
+        },
+
+        // 改进的PDF导出函数 - 根据模式选择导出方式
         async to_pdf(length = 20) {
+            if (this.pdfExportMode === 'vector') {
+                return this.to_pdf_vector();
+            } else {
+                return this.to_pdf_screenshot(length);
+            }
+        },
+
+        // 截图方式PDF导出（原有方法）
+        async to_pdf_screenshot(length = 20) {
             this.pdfdown = true;
             this.count = 0;
             
