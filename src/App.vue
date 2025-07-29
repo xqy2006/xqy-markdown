@@ -52,11 +52,12 @@
             </div>
             <div class="setting-group">
                 <label>PDF导出模式：</label>
-                <select v-model="pdfExportMode" class="form-control input-sm" style="width: 120px;">
+                <select v-model="pdfExportMode" class="form-control input-sm" style="width: 150px;">
                     <option value="vector">纯文本</option>
+                    <option value="svg">智能矢量</option>
                     <option value="screenshot">截图</option>
                 </select>
-                <small class="text-gray">(纯文本：可选择复制，文件小)</small>
+                <small class="text-gray">(智能矢量：可选择文字，完美样式)</small>
             </div>
         </div>
     </div>
@@ -961,7 +962,7 @@ export default {
                 if (this.shouldSkipElement(element)) continue;
                 
                 const blockInfo = await this.analyzeEnhancedElementStyle(element, contentElement);
-                if (blockInfo && blockInfo.text.trim()) {
+                if (blockInfo && blockInfo.text && typeof blockInfo.text === 'string' && blockInfo.text.trim()) {
                     styledBlocks.push(blockInfo);
                 }
             }
@@ -2339,10 +2340,126 @@ export default {
         async to_pdf(length = 20) {
             if (this.pdfExportMode === 'vector') {
                 return this.to_pdf_vector();
+            } else if (this.pdfExportMode === 'svg') {
+                return this.to_pdf_svg(length);
             } else {
                 return this.to_pdf_screenshot(length);
             }
         },
+
+        // 智能矢量PDF导出 - 高质量Canvas转图片，重用现有分页逻辑
+        async to_pdf_svg(length = 20) {
+            this.pdfdown = true;
+            this.count = 0;
+
+            try {
+                // 设置A4宽度并等待布局稳定
+                this.setA4Width();
+                await new Promise(resolve => setTimeout(resolve, 800));
+
+                const pdf = new jsPDF('', 'pt', 'a4');
+                const pageWidth = 595.28;
+                const pageHeight = 841.89;
+                const margin = length;
+
+                const contentElement = this.$refs.exportContent;
+                const contentWidth = contentElement.scrollWidth;
+                const pdfContentWidth = pageWidth - margin * 2;
+                const widthRatio = pdfContentWidth / contentWidth;
+                const idealPageHeightInPixels = (pageHeight - margin * 2) / widthRatio;
+
+                console.log('=== 智能矢量PDF导出开始 ===');
+                console.log(`内容尺寸: ${contentWidth} x ${contentElement.scrollHeight}`);
+                console.log(`理想页面像素高度: ${idealPageHeightInPixels}`);
+
+                // 使用更高的缩放比例以获得更好的质量
+                const targetScale = Math.max(this.exportScale * 2, 3.0);
+                const breakPoints = this.getOptimalPageBreaks(contentElement, idealPageHeightInPixels, targetScale);
+                this.sum = breakPoints.length - 1;
+
+                console.log('智能矢量模式页面分隔点:', breakPoints);
+
+                // 逐页处理
+                for (let i = 0; i < breakPoints.length - 1; i++) {
+                    this.count = i + 1;
+                    
+                    if (i > 0) {
+                        pdf.addPage();
+                    }
+
+                    const start = breakPoints[i];
+                    const end = breakPoints[i + 1];
+                    const pageHeight = end - start;
+
+                    console.log(`处理第 ${i + 1} 页，范围: ${start} - ${end}, 高度: ${pageHeight}`);
+
+                    // 确保高度大于0
+                    if (pageHeight <= 0) {
+                        console.warn(`页面 ${i + 1} 高度为 ${pageHeight}，跳过`);
+                        continue;
+                    }
+
+                    // 创建高质量页面图片
+                    const canvas = await this.createHighQualityPageCanvas(contentElement, start, pageHeight, targetScale);
+                    
+                    // 计算PDF中的显示尺寸
+                    const pdfImageWidth = pdfContentWidth;
+                    const pdfImageHeight = (canvas.height / canvas.width) * pdfImageWidth;
+                    
+                    // 将canvas转换为高质量图片并添加到PDF
+                    const imgData = canvas.toDataURL('image/png', 1.0);
+                    pdf.addImage(imgData, 'PNG', margin, margin, pdfImageWidth, pdfImageHeight);
+
+                    // 添加延迟以避免UI阻塞
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                // 保存PDF
+                const filename = this.pdffilename ? `${this.pdffilename}.pdf` : 'markdown-export.pdf';
+                pdf.save(filename);
+
+                console.log('=== 智能矢量PDF导出完成 ===');
+
+            } catch (error) {
+                console.error('智能矢量模式PDF导出失败:', error);
+                alert('智能矢量模式PDF导出失败: ' + error.message);
+            } finally {
+                this.pdfdown = false;
+                this.count = 0;
+                this.sum = 1;
+                this.restoreOriginalWidth();
+            }
+        },
+
+        // 创建高质量页面Canvas
+        async createHighQualityPageCanvas(contentElement, offsetTop, height, scale) {
+            const rect = contentElement.getBoundingClientRect();
+            
+            console.log(`创建高质量Canvas: ${rect.width} x ${height}, scale: ${scale}`);
+            
+            // 使用html2canvas以高质量设置渲染指定区域
+            const canvas = await html2canvas(contentElement, {
+                scale: scale,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                y: offsetTop,
+                height: height,
+                scrollX: 0,
+                scrollY: 0,
+                width: rect.width,
+                logging: false,
+                // 增强质量设置
+                allowTaint: false,
+                foreignObjectRendering: true,
+                imageTimeout: 15000,
+                removeContainer: true
+            });
+            
+            return canvas;
+        },
+
+
 
         // 截图方式PDF导出（原有方法）
         async to_pdf_screenshot(length = 20) {
