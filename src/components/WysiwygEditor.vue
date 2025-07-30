@@ -45,7 +45,8 @@ export default {
         italic: false,
         underline: false,
         code: false,
-        strikethrough: false
+        strikethrough: false,
+        highlight: false
       },
       currentHeadingLevel: 0
     }
@@ -135,6 +136,52 @@ export default {
         }
       });
 
+      // Enhanced custom rule for inline styles to preserve them
+      this.turndownService.addRule('inlineStyles', {
+        filter: (node) => {
+          return node.nodeName === 'SPAN' && node.style && (
+            node.style.fontWeight ||
+            node.style.fontStyle ||
+            node.style.textDecoration ||
+            node.getAttribute('data-format-applied') ||
+            node.getAttribute('data-format-neutralized')
+          );
+        },
+        replacement: (content, node) => {
+          const style = node.style;
+          let openTags = '';
+          let closeTags = '';
+          
+          // Check for bold
+          if (style.fontWeight === 'bold' || 
+              style.fontWeight === '700' || 
+              parseInt(style.fontWeight) >= 700) {
+            openTags += '**';
+            closeTags = '**' + closeTags;
+          }
+          
+          // Check for italic
+          if (style.fontStyle === 'italic') {
+            openTags += '*';
+            closeTags = '*' + closeTags;
+          }
+          
+          // Check for underline
+          if (style.textDecoration && style.textDecoration.includes('underline')) {
+            openTags += '<u>';
+            closeTags = '</u>' + closeTags;
+          }
+          
+          // Check for strikethrough
+          if (style.textDecoration && style.textDecoration.includes('line-through')) {
+            openTags += '~~';
+            closeTags = '~~' + closeTags;
+          }
+          
+          return openTags + content + closeTags;
+        }
+      });
+
       // Improved custom rule for code blocks with line numbers
       this.turndownService.addRule('codeBlock', {
         filter: (node) => {
@@ -154,7 +201,7 @@ export default {
             
             const codeText = lines.join('\n');
             
-            // Try to determine language from class
+            // Try to determine language from class or data attribute
             let language = '';
             const classes = codeElement.className.split(' ');
             for (const cls of classes) {
@@ -164,10 +211,40 @@ export default {
               }
             }
             
+            // Also check for data-language attribute
+            if (!language && codeElement.dataset.language) {
+              language = codeElement.dataset.language;
+            }
+            
             return '\n```' + language + '\n' + codeText + '\n```\n';
           }
           
           return '\n```\n' + (codeElement.textContent || '') + '\n```\n';
+        }
+      });
+
+      // Enhanced custom rule for preserving all formatting elements
+      this.turndownService.addRule('preserveFormattingElements', {
+        filter: ['strong', 'b', 'em', 'i', 'del', 's', 'strike', 'mark', 'code'],
+        replacement: (content, node) => {
+          switch (node.nodeName.toLowerCase()) {
+            case 'strong':
+            case 'b':
+              return `**${content}**`;
+            case 'em':
+            case 'i':
+              return `*${content}*`;
+            case 'del':
+            case 's':
+            case 'strike':
+              return `~~${content}~~`;
+            case 'mark':
+              return `<mark>${content}</mark>`;
+            case 'code':
+              return `\`${content}\``;
+            default:
+              return content;
+          }
         }
       });
 
@@ -576,7 +653,8 @@ export default {
         italic: this.isStyleActiveImproved(styleElement, 'em, i, [style*="font-style: italic"], [style*="font-style:italic"]'),
         underline: this.isStyleActiveImproved(styleElement, 'u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]'),
         code: this.isStyleActiveImproved(styleElement, 'code'),
-        strikethrough: this.isStyleActiveImproved(styleElement, 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]')
+        strikethrough: this.isStyleActiveImproved(styleElement, 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]'),
+        highlight: this.isStyleActiveImproved(styleElement, 'mark')
       };
       
       // Update current heading level
@@ -1404,7 +1482,9 @@ export default {
         'bold': 'strong, b, [style*="font-weight: bold"], [style*="font-weight:bold"]',
         'italic': 'em, i, [style*="font-style: italic"], [style*="font-style:italic"]',
         'underline': 'u, [style*="text-decoration: underline"], [style*="text-decoration:underline"]',
-        'strikethrough': 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]'
+        'strikethrough': 'del, s, strike, [style*="text-decoration: line-through"], [style*="text-decoration:line-through"]',
+        'code': 'code',
+        'highlight': 'mark'
       };
       
       const selector = selectorMap[formatType];
@@ -1413,6 +1493,37 @@ export default {
 
     insertNeutralFormattingSpan(formatType, range) {
       // Insert a span that neutralizes the current formatting more effectively
+      if (formatType === 'code') {
+        // For code, just insert plain text
+        const textNode = document.createTextNode('\u200B');
+        range.insertNode(textNode);
+        
+        const newRange = document.createRange();
+        newRange.setStart(textNode, 1);
+        newRange.collapse(true);
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        return;
+      }
+      
+      if (formatType === 'highlight') {
+        // For highlight, insert plain span
+        const span = document.createElement('span');
+        span.appendChild(document.createTextNode('\u200B'));
+        range.insertNode(span);
+        
+        const newRange = document.createRange();
+        newRange.setStart(span.firstChild, 1);
+        newRange.collapse(true);
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+        return;
+      }
+      
       const span = document.createElement('span');
       
       // Apply neutral styles with !important to override inheritance
@@ -1463,32 +1574,40 @@ export default {
 
     insertFormattingSpan(formatType, range) {
       // Insert a span with the desired formatting
-      const span = document.createElement('span');
+      let element;
       
-      // Apply formatting styles with !important to ensure they override inheritance
-      switch (formatType) {
-        case 'bold':
-          span.style.cssText = 'font-weight: bold !important;';
-          break;
-        case 'italic':
-          span.style.cssText = 'font-style: italic !important;';
-          break;
-        case 'underline':
-          span.style.cssText = 'text-decoration: underline !important;';
-          break;
-        case 'strikethrough':
-          span.style.cssText = 'text-decoration: line-through !important;';
-          break;
+      if (formatType === 'code') {
+        element = document.createElement('code');
+      } else if (formatType === 'highlight') {
+        element = document.createElement('mark');
+      } else {
+        element = document.createElement('span');
+        
+        // Apply formatting styles with !important to ensure they override inheritance
+        switch (formatType) {
+          case 'bold':
+            element.style.cssText = 'font-weight: bold !important;';
+            break;
+          case 'italic':
+            element.style.cssText = 'font-style: italic !important;';
+            break;
+          case 'underline':
+            element.style.cssText = 'text-decoration: underline !important;';
+            break;
+          case 'strikethrough':
+            element.style.cssText = 'text-decoration: line-through !important;';
+            break;
+        }
       }
       
       // Add a zero-width space to make it immediately editable
-      span.appendChild(document.createTextNode('\u200B'));
+      element.appendChild(document.createTextNode('\u200B'));
       
-      range.insertNode(span);
+      range.insertNode(element);
       
-      // Position cursor inside the span
+      // Position cursor inside the element
       const newRange = document.createRange();
-      newRange.setStart(span.firstChild, 1);
+      newRange.setStart(element.firstChild, 1);
       newRange.collapse(true);
       
       const selection = window.getSelection();
@@ -1496,18 +1615,18 @@ export default {
       selection.addRange(newRange);
       
       // Add attribute to help with style detection
-      span.setAttribute('data-format-applied', formatType);
+      element.setAttribute('data-format-applied', formatType);
       
       // Set up event to clean and merge when user types
       const handleInput = (event) => {
         // When user types, clean up the zero-width space
-        if (span.textContent.length > 1) {
-          span.textContent = span.textContent.replace('\u200B', '');
-          span.removeEventListener('input', handleInput);
+        if (element.textContent.length > 1) {
+          element.textContent = element.textContent.replace('\u200B', '');
+          element.removeEventListener('input', handleInput);
         }
       };
       
-      span.addEventListener('input', handleInput);
+      element.addEventListener('input', handleInput);
       this.$refs.editor.addEventListener('input', handleInput, { once: true });
     },
 
@@ -1772,28 +1891,50 @@ export default {
     },
 
     insertHighlight() {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      
-      const range = selection.getRangeAt(0);
-      const selectedText = range.toString();
-      
-      if (selectedText) {
-        const markElement = document.createElement('mark');
-        markElement.textContent = selectedText;
+      if (this.isSimpleToggle()) {
+        // Use custom implementation for selected text
+        const selection = window.getSelection();
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
         
-        range.deleteContents();
-        range.insertNode(markElement);
+        // Check if already highlighted
+        const commonAncestor = range.commonAncestorContainer;
+        const element = commonAncestor.nodeType === Node.TEXT_NODE 
+          ? commonAncestor.parentElement 
+          : commonAncestor;
+        const existingMark = element.closest('mark');
         
-        // Position cursor after the mark element
-        const newRange = document.createRange();
-        newRange.setStartAfter(markElement);
-        newRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-        
-        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+        if (existingMark) {
+          // Remove highlight
+          const textNode = document.createTextNode(existingMark.textContent);
+          existingMark.parentNode.replaceChild(textNode, existingMark);
+        } else {
+          // Add highlight
+          const markElement = document.createElement('mark');
+          markElement.textContent = selectedText;
+          
+          range.deleteContents();
+          range.insertNode(markElement);
+          
+          // Position cursor after the mark element
+          const newRange = document.createRange();
+          newRange.setStartAfter(markElement);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
+      } else {
+        // Use improved logic for cursor-based formatting
+        this.toggleFormatAtCursor('highlight');
       }
+      
+      this.$nextTick(() => {
+        setTimeout(() => {
+          this.updateStyleStates();
+        }, 50);
+      });
+      
+      this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
     detectAndConvertMarkdown(event) {
@@ -2107,9 +2248,21 @@ export default {
       pre.style.fontFamily = 'monospace';
       pre.className = 'hljs'; // Add hljs class for consistency
       
-      code.textContent = 'Your code here...';
-      code.contentEditable = true;
-      code.style.outline = 'none';
+      // Create initial line structure with line numbers to match normal mode
+      const ol = document.createElement('ol');
+      const li = document.createElement('li');
+      li.style.marginTop = '0';
+      li.style.marginInlineStart = '15px';
+      
+      const span = document.createElement('span');
+      span.style.color = '#24292f';
+      span.textContent = 'Your code here...';
+      span.contentEditable = true;
+      span.style.outline = 'none';
+      
+      li.appendChild(span);
+      ol.appendChild(li);
+      code.appendChild(ol);
       
       pre.appendChild(code);
       codeBlockWrapper.appendChild(languageInput);
@@ -2147,17 +2300,20 @@ export default {
         languageInput.focus();
       });
       
-      // Handle language change
+      // Handle language change with immediate highlighting
       languageInput.addEventListener('input', (e) => {
         e.stopPropagation();
         const language = languageInput.value.trim();
+        
+        // Update code element class
         if (language) {
           code.className = `language-${language}`;
-          // Trigger syntax highlighting if available
-          this.highlightCodeBlock(code, language);
         } else {
           code.className = '';
         }
+        
+        // Apply syntax highlighting to existing content
+        this.applyCodeHighlighting(ol, language);
         
         // Prevent this from triggering the main editor's input event immediately
         setTimeout(() => {
@@ -2178,9 +2334,18 @@ export default {
         e.stopPropagation();
       });
       
-      // Handle code editing
-      code.addEventListener('input', () => {
+      // Handle code editing with line management
+      span.addEventListener('input', (e) => {
+        this.handleCodeLineInput(ol, languageInput.value.trim());
         this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      
+      // Handle Enter key for new lines in code
+      span.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.insertCodeLine(ol, span);
+        }
       });
       
       // Prevent focus from jumping to main editor when interacting with code block
@@ -2188,7 +2353,7 @@ export default {
         e.stopPropagation();
       });
       
-      code.addEventListener('focus', (e) => {
+      span.addEventListener('focus', (e) => {
         e.stopPropagation();
       });
       
@@ -2197,23 +2362,96 @@ export default {
       
       // Select the placeholder text
       const newRange = document.createRange();
-      newRange.selectNodeContents(code);
+      newRange.selectNodeContents(span);
       selection.removeAllRanges();
       selection.addRange(newRange);
       
       this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
     },
     
-    highlightCodeBlock(codeElement, language) {
-      // Apply syntax highlighting if hljs is available
-      if (window.hljs && window.hljs.getLanguage && window.hljs.getLanguage(language)) {
-        try {
-          const result = window.hljs.highlight(codeElement.textContent, { language });
-          codeElement.innerHTML = result.value;
-        } catch (error) {
-          console.warn('Syntax highlighting failed:', error);
-        }
+    applyCodeHighlighting(olElement, language) {
+      // Apply syntax highlighting to code lines in the ordered list
+      if (!language || !window.hljs || !window.hljs.getLanguage(language)) {
+        return;
       }
+      
+      try {
+        // Get all text content from list items
+        const lines = Array.from(olElement.querySelectorAll('li')).map(li => li.textContent || '');
+        const codeText = lines.join('\n');
+        
+        // Highlight the code
+        const result = window.hljs.highlight(codeText, { language });
+        const highlightedLines = result.value.split('\n');
+        
+        // Update each list item with highlighted content
+        const listItems = olElement.querySelectorAll('li');
+        highlightedLines.forEach((line, index) => {
+          if (listItems[index]) {
+            const span = listItems[index].querySelector('span');
+            if (span) {
+              span.innerHTML = line || '<br>'; // Use <br> for empty lines
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('Code highlighting failed:', error);
+      }
+    },
+    
+    handleCodeLineInput(olElement, language) {
+      // Manage line structure when user types in code
+      const lines = Array.from(olElement.querySelectorAll('li span')).map(span => span.textContent || '');
+      
+      // Apply highlighting if language is set
+      if (language) {
+        this.applyCodeHighlighting(olElement, language);
+      }
+    },
+    
+    insertCodeLine(olElement, currentSpan) {
+      // Insert a new line in the code block
+      const currentLi = currentSpan.closest('li');
+      const newLi = document.createElement('li');
+      newLi.style.marginTop = '0';
+      newLi.style.marginInlineStart = '15px';
+      
+      const newSpan = document.createElement('span');
+      newSpan.style.color = '#24292f';
+      newSpan.contentEditable = true;
+      newSpan.style.outline = 'none';
+      newSpan.appendChild(document.createElement('br'));
+      
+      // Set up input handling for new line
+      newSpan.addEventListener('input', (e) => {
+        const languageInput = olElement.closest('.code-block-wrapper').querySelector('.code-language-input');
+        this.handleCodeLineInput(olElement, languageInput ? languageInput.value.trim() : '');
+        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      
+      newSpan.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.insertCodeLine(olElement, newSpan);
+        }
+      });
+      
+      newLi.appendChild(newSpan);
+      
+      // Insert after current line
+      if (currentLi.nextSibling) {
+        olElement.insertBefore(newLi, currentLi.nextSibling);
+      } else {
+        olElement.appendChild(newLi);
+      }
+      
+      // Focus new line
+      const range = document.createRange();
+      range.setStart(newSpan, 0);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
     },
 
     insertHorizontalRule() {

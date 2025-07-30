@@ -78,7 +78,7 @@
             <td><IconButton icon="italic" tooltip="斜体 (Ctrl+I)" :variant="italicButtonClass.replace('btn-', '')" @click="handleItalic()" /></td>
             <td><IconButton icon="underline" tooltip="下划线" :variant="underlineButtonClass.replace('btn-', '')" @click="handleUnderline()" /></td>
             <td><IconButton icon="paint" tooltip="标红" @click="handleColorText('red')" /></td>
-            <td><IconButton icon="highlight" tooltip="高亮" @click="handleHighlight()" /></td>
+            <td><IconButton icon="highlight" tooltip="高亮" :variant="highlightButtonClass.replace('btn-', '')" @click="handleHighlight()" /></td>
             <td><IconButton icon="strikethrough" tooltip="删除线" :variant="strikethroughButtonClass.replace('btn-', '')" @click="handleStrikethrough()" /></td>
         </span>
         <span class="BtnGroup d-block toolbar-row" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
@@ -434,7 +434,8 @@ export default {
                 italic: false,
                 underline: false,
                 code: false,
-                strikethrough: false
+                strikethrough: false,
+                highlight: false
             },
             currentHeadingLevel: 0,
             headingIcons: {
@@ -471,6 +472,10 @@ export default {
         
         strikethroughButtonClass() {
             return this.isWysiwygMode && this.wysiwygStyleStates.strikethrough ? 'btn-primary' : 'btn-invisible';
+        },
+        
+        highlightButtonClass() {
+            return this.isWysiwygMode && this.wysiwygStyleStates.highlight ? 'btn-primary' : 'btn-invisible';
         }
     },
     created(){
