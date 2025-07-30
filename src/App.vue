@@ -106,10 +106,9 @@
             <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
         </div>
         <div v-else style="margin-top: 5px;">
-            <WysiwygEditorSimple 
+            <WysiwygEditorTypora 
                 v-model="mdtext" 
                 @style-state-update="handleStyleStateUpdate"
-                :get-markdown-renderer="getMarkdownRenderer"
                 ref="wysiwygEditor"
             />
         </div>
@@ -406,6 +405,7 @@ import WysiwygEditor from './components/WysiwygEditor.vue'
 import WysiwygEditorRefactored from './components/WysiwygEditorRefactored.vue'
 import WysiwygEditorFixed from './components/WysiwygEditorFixed.vue'
 import WysiwygEditorSimple from './components/WysiwygEditorSimple.vue'
+import WysiwygEditorTypora from './components/WysiwygEditorTypora.vue'
 import IconButton from './components/IconButton.vue'
 
 export default {
@@ -414,6 +414,7 @@ export default {
         WysiwygEditorRefactored,
         WysiwygEditorFixed,
         WysiwygEditorSimple,
+        WysiwygEditorTypora,
         IconButton
     },
     data() {
