@@ -135,6 +135,42 @@ export default {
         }
       });
 
+      // Improved custom rule for code blocks with line numbers
+      this.turndownService.addRule('codeBlock', {
+        filter: (node) => {
+          return node.nodeName === 'PRE' && 
+                 node.classList.contains('hljs') && 
+                 node.querySelector('code ol');
+        },
+        replacement: (content, node) => {
+          const codeElement = node.querySelector('code');
+          const olElement = codeElement.querySelector('ol');
+          
+          if (olElement) {
+            // Extract text from line items
+            const lines = Array.from(olElement.querySelectorAll('li')).map(li => {
+              return li.textContent || '';
+            });
+            
+            const codeText = lines.join('\n');
+            
+            // Try to determine language from class
+            let language = '';
+            const classes = codeElement.className.split(' ');
+            for (const cls of classes) {
+              if (cls.startsWith('language-')) {
+                language = cls.replace('language-', '');
+                break;
+              }
+            }
+            
+            return '\n```' + language + '\n' + codeText + '\n```\n';
+          }
+          
+          return '\n```\n' + (codeElement.textContent || '') + '\n```\n';
+        }
+      });
+
       // Custom rule for math expressions - handle both rendered and editable versions
       this.turndownService.addRule('math', {
         filter: (node) => {
@@ -185,6 +221,9 @@ export default {
         // Post-process to make math formulas editable in WYSIWYG mode
         htmlContent = this.makeMatFormulasEditable(htmlContent);
         
+        // Ensure code blocks have consistent line numbers in WYSIWYG mode
+        htmlContent = this.ensureCodeBlockLineNumbers(htmlContent);
+        
         this.htmlContent = htmlContent;
       } else {
         // Ensure empty editor has proper structure for editing
@@ -195,6 +234,55 @@ export default {
       this.$nextTick(() => {
         this.ensureMinimalContent();
       });
+    },
+
+    ensureCodeBlockLineNumbers(htmlContent) {
+      // Ensure all code blocks have line numbers for consistency with normal mode
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      
+      // Find code blocks that might not have line numbers
+      const codeBlocks = tempDiv.querySelectorAll('pre code');
+      
+      codeBlocks.forEach(codeElement => {
+        const preElement = codeElement.parentElement;
+        
+        // Skip if already has line numbers (ol structure)
+        if (codeElement.querySelector('ol')) {
+          return;
+        }
+        
+        // Skip if it's an inline code or special code block from WYSIWYG
+        if (!preElement.classList.contains('hljs') || codeElement.contentEditable === 'true') {
+          return;
+        }
+        
+        // Add line numbers to match the normal mode rendering
+        const codeText = codeElement.textContent || '';
+        const lines = codeText.split('\n');
+        
+        // Remove empty last line if present
+        if (lines.length > 0 && lines[lines.length - 1] === '') {
+          lines.pop();
+        }
+        
+        if (lines.length > 0) {
+          let result = '';
+          lines.forEach(line => {
+            result += `<li style="margin-top: 0;margin-inline-start: 15px;"><span style="color: #24292f;">${this.escapeHtml(line)}</span></li>`;
+          });
+          
+          codeElement.innerHTML = `<ol>${result}</ol>`;
+        }
+      });
+      
+      return tempDiv.innerHTML;
+    },
+
+    escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     },
 
     initializeEmptyEditor() {
@@ -598,28 +686,54 @@ export default {
     isStyleActiveImproved(element, selector) {
       if (!element) return false;
       
+      // First check for explicitly neutralized formatting
+      if (element.hasAttribute && element.hasAttribute('data-format-neutralized')) {
+        const neutralizedFormat = element.getAttribute('data-format-neutralized');
+        if (selector.includes('font-weight') && neutralizedFormat === 'bold') return false;
+        if (selector.includes('font-style') && neutralizedFormat === 'italic') return false;
+        if (selector.includes('underline') && neutralizedFormat === 'underline') return false;
+        if (selector.includes('line-through') && neutralizedFormat === 'strikethrough') return false;
+      }
+      
       // Check direct match
       if (element.matches && element.matches(selector)) {
         return true;
       }
       
-      // Check ancestors
-      const matchingAncestor = element.closest(selector);
-      if (matchingAncestor) {
-        return true;
+      // Check ancestors, but skip neutralized spans
+      let currentElement = element.parentElement;
+      while (currentElement && currentElement !== this.$refs.editor) {
+        // Skip elements that have been explicitly neutralized
+        if (currentElement.hasAttribute && currentElement.hasAttribute('data-format-neutralized')) {
+          const neutralizedFormat = currentElement.getAttribute('data-format-neutralized');
+          if (selector.includes('font-weight') && neutralizedFormat === 'bold') return false;
+          if (selector.includes('font-style') && neutralizedFormat === 'italic') return false;
+          if (selector.includes('underline') && neutralizedFormat === 'underline') return false;
+          if (selector.includes('line-through') && neutralizedFormat === 'strikethrough') return false;
+        }
+        
+        if (currentElement.matches && currentElement.matches(selector)) {
+          return true;
+        }
+        currentElement = currentElement.parentElement;
       }
       
-      // Check computed styles for inline styles
+      // Check computed styles for inline styles, but respect neutralization
       const computedStyle = window.getComputedStyle(element);
       
       // Check for bold
       if (selector.includes('font-weight') && 
           (computedStyle.fontWeight === 'bold' || computedStyle.fontWeight === '700' || parseInt(computedStyle.fontWeight) >= 700)) {
+        // Double-check that this isn't neutralized
+        const neutralizedElement = element.closest('[data-format-neutralized="bold"]');
+        if (neutralizedElement) return false;
         return true;
       }
       
       // Check for italic
       if (selector.includes('font-style') && computedStyle.fontStyle === 'italic') {
+        const neutralizedElement = element.closest('[data-format-neutralized="italic"]');
+        if (neutralizedElement) return false;
         return true;
       }
       
@@ -627,9 +741,13 @@ export default {
       if (selector.includes('text-decoration')) {
         const textDecoration = computedStyle.textDecoration;
         if (selector.includes('underline') && textDecoration.includes('underline')) {
+          const neutralizedElement = element.closest('[data-format-neutralized="underline"]');
+          if (neutralizedElement) return false;
           return true;
         }
         if (selector.includes('line-through') && textDecoration.includes('line-through')) {
+          const neutralizedElement = element.closest('[data-format-neutralized="strikethrough"]');
+          if (neutralizedElement) return false;
           return true;
         }
       }
@@ -1294,72 +1412,26 @@ export default {
     },
 
     insertNeutralFormattingSpan(formatType, range) {
-      // Insert a span that neutralizes the current formatting
+      // Insert a span that neutralizes the current formatting more effectively
       const span = document.createElement('span');
       
-      // Apply neutral styles to break inheritance
+      // Apply neutral styles with !important to override inheritance
       switch (formatType) {
         case 'bold':
-          span.style.fontWeight = 'normal';
+          span.style.cssText = 'font-weight: normal !important;';
           break;
         case 'italic':
-          span.style.fontStyle = 'normal';
+          span.style.cssText = 'font-style: normal !important;';
           break;
         case 'underline':
-          span.style.textDecoration = 'none';
+          span.style.cssText = 'text-decoration: none !important;';
           break;
         case 'strikethrough':
-          span.style.textDecoration = 'none';
+          span.style.cssText = 'text-decoration: none !important;';
           break;
       }
       
-      // Add a non-breaking space to make it editable
-      span.appendChild(document.createTextNode('\u00A0'));
-      
-      range.insertNode(span);
-      
-      // Position cursor inside the span
-      const newRange = document.createRange();
-      newRange.setStart(span.firstChild, 1);
-      newRange.collapse(true);
-      
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-      
-      // Clean up the non-breaking space when user starts typing
-      let cleaned = false;
-      const cleanupHandler = () => {
-        if (!cleaned && span.textContent.length > 1) {
-          span.textContent = span.textContent.replace('\u00A0', '');
-          cleaned = true;
-          span.removeEventListener('input', cleanupHandler);
-        }
-      };
-      span.addEventListener('input', cleanupHandler);
-    },
-
-    insertFormattingSpan(formatType, range) {
-      // Insert a span with the desired formatting
-      const span = document.createElement('span');
-      
-      // Apply formatting styles
-      switch (formatType) {
-        case 'bold':
-          span.style.fontWeight = 'bold';
-          break;
-        case 'italic':
-          span.style.fontStyle = 'italic';
-          break;
-        case 'underline':
-          span.style.textDecoration = 'underline';
-          break;
-        case 'strikethrough':
-          span.style.textDecoration = 'line-through';
-          break;
-      }
-      
-      // Add a zero-width space to make it editable
+      // Add a zero-width space to make it immediately editable
       span.appendChild(document.createTextNode('\u200B'));
       
       range.insertNode(span);
@@ -1372,6 +1444,71 @@ export default {
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(newRange);
+      
+      // Add attribute to help with style detection
+      span.setAttribute('data-format-neutralized', formatType);
+      
+      // Set up event to clean and merge when user types
+      const handleInput = (event) => {
+        // When user types, clean up the zero-width space and merge if possible
+        if (span.textContent.length > 1) {
+          span.textContent = span.textContent.replace('\u200B', '');
+          span.removeEventListener('input', handleInput);
+        }
+      };
+      
+      span.addEventListener('input', handleInput);
+      this.$refs.editor.addEventListener('input', handleInput, { once: true });
+    },
+
+    insertFormattingSpan(formatType, range) {
+      // Insert a span with the desired formatting
+      const span = document.createElement('span');
+      
+      // Apply formatting styles with !important to ensure they override inheritance
+      switch (formatType) {
+        case 'bold':
+          span.style.cssText = 'font-weight: bold !important;';
+          break;
+        case 'italic':
+          span.style.cssText = 'font-style: italic !important;';
+          break;
+        case 'underline':
+          span.style.cssText = 'text-decoration: underline !important;';
+          break;
+        case 'strikethrough':
+          span.style.cssText = 'text-decoration: line-through !important;';
+          break;
+      }
+      
+      // Add a zero-width space to make it immediately editable
+      span.appendChild(document.createTextNode('\u200B'));
+      
+      range.insertNode(span);
+      
+      // Position cursor inside the span
+      const newRange = document.createRange();
+      newRange.setStart(span.firstChild, 1);
+      newRange.collapse(true);
+      
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      
+      // Add attribute to help with style detection
+      span.setAttribute('data-format-applied', formatType);
+      
+      // Set up event to clean and merge when user types
+      const handleInput = (event) => {
+        // When user types, clean up the zero-width space
+        if (span.textContent.length > 1) {
+          span.textContent = span.textContent.replace('\u200B', '');
+          span.removeEventListener('input', handleInput);
+        }
+      };
+      
+      span.addEventListener('input', handleInput);
+      this.$refs.editor.addEventListener('input', handleInput, { once: true });
     },
 
     isSimpleToggle() {
@@ -1988,8 +2125,31 @@ export default {
         }
       });
       
+      // Improved language input event handling to prevent focus loss
+      languageInput.addEventListener('focus', (e) => {
+        e.stopPropagation();
+        languageInput.style.opacity = '1';
+      });
+      
+      languageInput.addEventListener('blur', (e) => {
+        e.stopPropagation();
+        languageInput.style.opacity = '0.7';
+      });
+      
+      // Prevent clicks on language input from affecting editor selection
+      languageInput.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+      });
+      
+      languageInput.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        languageInput.focus();
+      });
+      
       // Handle language change
-      languageInput.addEventListener('input', () => {
+      languageInput.addEventListener('input', (e) => {
+        e.stopPropagation();
         const language = languageInput.value.trim();
         if (language) {
           code.className = `language-${language}`;
@@ -1998,20 +2158,38 @@ export default {
         } else {
           code.className = '';
         }
-        this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Prevent this from triggering the main editor's input event immediately
+        setTimeout(() => {
+          this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+        }, 0);
       });
       
-      languageInput.addEventListener('focus', () => {
-        languageInput.style.opacity = '1';
+      // Prevent keyboard events in language input from bubbling to editor
+      languageInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
       });
       
-      languageInput.addEventListener('blur', () => {
-        languageInput.style.opacity = '0.7';
+      languageInput.addEventListener('keyup', (e) => {
+        e.stopPropagation();
+      });
+      
+      languageInput.addEventListener('keypress', (e) => {
+        e.stopPropagation();
       });
       
       // Handle code editing
       code.addEventListener('input', () => {
         this.$refs.editor.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      
+      // Prevent focus from jumping to main editor when interacting with code block
+      pre.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      
+      code.addEventListener('focus', (e) => {
+        e.stopPropagation();
       });
       
       const range = selection.getRangeAt(0);

@@ -1400,6 +1400,14 @@ export default {
             })
         },
         add4(str1, str2) {
+            // Ensure editor focus before executing
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.add4(str1, str2), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertMarkdown(str1 + str2);
                 return;
@@ -1492,8 +1500,40 @@ export default {
             this.currentHeadingLevel = data.headingLevel;
         },
 
-        // Unified toolbar handlers that work in both modes
+        // Helper method to ensure editor focus before executing commands
+        ensureEditorFocus() {
+            // Check if focus is on markdown editor
+            const activeElement = document.activeElement;
+            
+            if (this.isWysiwygMode) {
+                const wysiwygEditor = this.$refs.wysiwygEditor?.$refs.editor;
+                if (activeElement !== wysiwygEditor) {
+                    // Auto-focus the WYSIWYG editor
+                    this.$refs.wysiwygEditor?.focus();
+                    return false; // Indicate focus was changed
+                }
+            } else {
+                const textareaEditor = this.$refs.input;
+                if (activeElement !== textareaEditor) {
+                    // Auto-focus the textarea editor
+                    textareaEditor?.focus();
+                    return false; // Indicate focus was changed
+                }
+            }
+            
+            return true; // Focus is already on editor
+        },
+
+        // Unified toolbar handlers that work in both modes with focus management
         handleHeading() {
+            if (!this.ensureEditorFocus()) {
+                // Focus was changed, retry after a short delay
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleHeading(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleHeading();
             } else {
@@ -1502,6 +1542,13 @@ export default {
         },
 
         handleBold() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleBold(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleBold();
             } else {
@@ -1510,6 +1557,13 @@ export default {
         },
 
         handleItalic() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleItalic(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleItalic();
             } else {
@@ -1518,6 +1572,13 @@ export default {
         },
 
         handleUnderline() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleUnderline(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleUnderline();
             } else {
@@ -1526,6 +1587,13 @@ export default {
         },
 
         handleStrikethrough() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleStrikethrough(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleStrikethrough();
             } else {
@@ -1534,6 +1602,13 @@ export default {
         },
 
         handleCode() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleCode(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.toggleCode();
             } else {
@@ -1542,6 +1617,13 @@ export default {
         },
 
         handleCodeBlock() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleCodeBlock(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertCodeBlock();
             } else {
@@ -1550,6 +1632,13 @@ export default {
         },
 
         handleQuote() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleQuote(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertBlockQuote();
             } else {
@@ -1558,6 +1647,13 @@ export default {
         },
 
         handleList() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleList(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertUnorderedList();
             } else {
@@ -1566,6 +1662,13 @@ export default {
         },
 
         handleTaskList() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleTaskList(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertTaskList();
             } else {
@@ -1574,6 +1677,13 @@ export default {
         },
 
         handleImage() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleImage(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertImage();
             } else {
@@ -1582,6 +1692,13 @@ export default {
         },
 
         handleHR() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleHR(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertHorizontalRule();
             } else {
@@ -1590,6 +1707,13 @@ export default {
         },
 
         handleTOC() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleTOC(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertTOC();
             } else {
@@ -1598,6 +1722,13 @@ export default {
         },
 
         handleMath() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleMath(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertMathInline();
             } else {
@@ -1606,6 +1737,13 @@ export default {
         },
 
         handleColorText(color) {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleColorText(color), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertColorText(color);
             } else {
@@ -1614,6 +1752,13 @@ export default {
         },
 
         handleHighlight() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleHighlight(), 50);
+                });
+                return;
+            }
+            
             if (this.isWysiwygMode) {
                 this.$refs.wysiwygEditor?.insertHighlight();
             } else {
