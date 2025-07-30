@@ -55,7 +55,8 @@
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block toolbar-row primary-toolbar" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
             <td><IconButton :icon="currentHeadingIcon" tooltip="标题" @click="handleHeading()" /></td>
-            <td><IconButton icon="code-block" tooltip="代码块" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="code-block" tooltip="代码块 (Ctrl+K)" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="settings" tooltip="代码语言 (F2)" @click="handleCodeLanguage()" /></td>
             <td><IconButton icon="code" tooltip="单行代码" :variant="codeButtonClass.replace('btn-', '')" @click="handleCode()" /></td>
             <td><IconButton icon="image" tooltip="图片" @click="handleImage()" /></td>
             <td><IconButton icon="quote" tooltip="引用" @click="handleQuote()" /></td>
@@ -1625,6 +1626,22 @@ export default {
                 this.$refs.wysiwygEditor?.insertCodeBlock();
             } else {
                 this.add1('\n```\n');
+            }
+        },
+        
+        handleCodeLanguage() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleCodeLanguage(), 50);
+                });
+                return;
+            }
+            
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.showCodeBlockLanguageSelector();
+            } else {
+                // In normal mode, just show a hint
+                alert('请切换到WYSIWYG模式使用代码语言选择功能，或手动在代码块第一行添加语言标识，如: ```javascript');
             }
         },
 

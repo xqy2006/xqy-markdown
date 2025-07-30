@@ -196,9 +196,23 @@ export default {
     },
 
     /**
-     * Handle key down events - simplified
+     * Handle key down events - enhanced
      */
     handleKeydown(event) {
+      // Handle F2 for language selector in code blocks
+      if (event.key === 'F2') {
+        event.preventDefault();
+        this.showCodeBlockLanguageSelector();
+        return;
+      }
+      
+      // Handle Ctrl+K for quick code block insertion
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault();
+        this.insertCodeBlock();
+        return;
+      }
+      
       // Only handle essential shortcuts, let contenteditable handle the rest
       if (event.ctrlKey || event.metaKey) {
         switch (event.key) {
@@ -225,10 +239,29 @@ export default {
     },
 
     /**
-     * Handle paste events - simplified
+     * Handle paste events - enhanced for code blocks
      */
     handlePaste(event) {
-      // Allow default paste behavior, then sync content
+      const clipboardData = event.clipboardData || window.clipboardData;
+      const plainText = clipboardData.getData('text/plain');
+      
+      // Check if pasted content looks like code (multiple lines)
+      if (plainText && plainText.includes('\n') && plainText.split('\n').length > 2) {
+        event.preventDefault();
+        
+        // Auto-wrap multi-line content in code block
+        const codeBlock = `\n\`\`\`\n${plainText}\n\`\`\`\n`;
+        this.insertTextAtCursor(codeBlock);
+        
+        // Show language selector for the new code block
+        this.$nextTick(() => {
+          this.showCodeBlockLanguageSelector();
+        });
+        
+        return;
+      }
+      
+      // For single-line or short content, allow default paste behavior
       this.$nextTick(() => {
         this.debouncedContentSync();
       });
@@ -265,12 +298,11 @@ export default {
     },
 
     /**
-     * Update style states based on current cursor position - simplified
+     * Update style states based on current cursor position - enhanced
      */
     updateStyleStates() {
       if (!this.$refs.editor) return;
 
-      // Simple style detection based on cursor position
       const selection = window.getSelection();
       let styleState = {
         bold: false,
@@ -287,19 +319,23 @@ export default {
         const range = selection.getRangeAt(0);
         const textContent = this.$refs.editor.textContent || '';
         
-        // Simple check for common markdown patterns around cursor
+        // Get more context around cursor for better detection
         const cursorPos = this.getTextOffset(range.startContainer, range.startOffset);
-        const surroundingText = textContent.substring(Math.max(0, cursorPos - 10), cursorPos + 10);
+        const surroundingText = textContent.substring(Math.max(0, cursorPos - 50), cursorPos + 50);
         
-        // Basic pattern detection
-        styleState.bold = /\*\*.*?\*\*/.test(surroundingText);
-        styleState.italic = /\*.*?\*/.test(surroundingText) && !styleState.bold;
-        styleState.code = /`.*?`/.test(surroundingText);
-        styleState.strikethrough = /~~.*?~~/.test(surroundingText);
-        styleState.underline = /<u>.*?<\/u>/.test(surroundingText);
-        styleState.highlight = /<mark>.*?<\/mark>/.test(surroundingText);
+        // Enhanced pattern detection with word boundaries
+        const beforeCursor = surroundingText.substring(0, Math.min(50, cursorPos));
+        const afterCursor = surroundingText.substring(Math.min(50, cursorPos));
         
-        // Basic heading detection
+        // Check if cursor is inside styled text
+        styleState.bold = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '**');
+        styleState.italic = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '*') && !styleState.bold;
+        styleState.code = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '`');
+        styleState.strikethrough = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '~~');
+        styleState.underline = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '<u>', '</u>');
+        styleState.highlight = this.isInsideMarkdownStyle(beforeCursor, afterCursor, '<mark>', '</mark>');
+        
+        // Enhanced heading detection - look at current line
         const lineStart = textContent.lastIndexOf('\n', cursorPos - 1);
         const lineEnd = textContent.indexOf('\n', cursorPos);
         const currentLine = textContent.substring(lineStart + 1, lineEnd === -1 ? undefined : lineEnd);
@@ -314,6 +350,32 @@ export default {
         styles: styleState,
         headingLevel: headingLevel
       });
+    },
+    
+    /**
+     * Check if cursor is inside a markdown style
+     */
+    isInsideMarkdownStyle(beforeCursor, afterCursor, openTag, closeTag = null) {
+      const closeTagToUse = closeTag || openTag;
+      
+      // Count occurrences of opening and closing tags before cursor
+      const openCount = (beforeCursor.match(new RegExp(this.escapeRegex(openTag), 'g')) || []).length;
+      const closeCount = (beforeCursor.match(new RegExp(this.escapeRegex(closeTagToUse), 'g')) || []).length;
+      
+      // If we have more opening tags than closing tags, we're inside a style
+      if (openCount > closeCount) {
+        // Verify there's a closing tag after the cursor
+        return afterCursor.includes(closeTagToUse);
+      }
+      
+      return false;
+    },
+    
+    /**
+     * Escape special regex characters
+     */
+    escapeRegex(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     },
     
     /**
@@ -519,22 +581,133 @@ export default {
       if (!selection.rangeCount) return;
       
       const range = selection.getRangeAt(0);
-      const codeBlock = '\n```\n\n```\n';
+      
+      // Create code block with language selector
+      const codeBlockTemplate = '\n```javascript\n// Your code here\n```\n';
       
       range.deleteContents();
-      range.insertNode(document.createTextNode(codeBlock));
+      range.insertNode(document.createTextNode(codeBlockTemplate));
       
-      // Position cursor inside the code block
-      const textNode = range.startContainer.nextSibling;
-      if (textNode) {
-        range.setStart(textNode, 4); // Position after ```\n
-        range.collapse(true);
+      // Position cursor inside the code block (after the language part)
+      const textNode = range.startContainer;
+      if (textNode && textNode.textContent) {
+        const languageEnd = textNode.textContent.indexOf('\n', textNode.textContent.indexOf('```') + 3);
+        if (languageEnd !== -1) {
+          range.setStart(textNode, languageEnd + 1);
+          range.collapse(true);
+        }
       }
       
       selection.removeAllRanges();
       selection.addRange(range);
       
       this.debouncedContentSync();
+      
+      // Show language selector after inserting code block
+      this.$nextTick(() => {
+        this.showCodeBlockLanguageSelector();
+      });
+    },
+    
+    /**
+     * Show language selector for code blocks
+     */
+    showCodeBlockLanguageSelector() {
+      const languages = [
+        { value: 'javascript', label: 'JavaScript' },
+        { value: 'python', label: 'Python' },
+        { value: 'java', label: 'Java' },
+        { value: 'cpp', label: 'C++' },
+        { value: 'c', label: 'C' },
+        { value: 'csharp', label: 'C#' },
+        { value: 'typescript', label: 'TypeScript' },
+        { value: 'html', label: 'HTML' },
+        { value: 'css', label: 'CSS' },
+        { value: 'sql', label: 'SQL' },
+        { value: 'bash', label: 'Bash' },
+        { value: 'json', label: 'JSON' },
+        { value: 'xml', label: 'XML' },
+        { value: 'yaml', label: 'YAML' },
+        { value: 'markdown', label: 'Markdown' },
+        { value: 'php', label: 'PHP' },
+        { value: 'ruby', label: 'Ruby' },
+        { value: 'go', label: 'Go' },
+        { value: 'rust', label: 'Rust' },
+        { value: 'swift', label: 'Swift' },
+        { value: 'kotlin', label: 'Kotlin' },
+        { value: 'dart', label: 'Dart' },
+        { value: 'plaintext', label: 'Plain Text' }
+      ];
+      
+      const languageList = languages.map(lang => `${lang.value} (${lang.label})`).join('\n');
+      const selectedLanguage = prompt(`选择代码语言:\n\n${languageList}\n\n请输入语言代码 (如: javascript, python 等):`);
+      
+      if (selectedLanguage && selectedLanguage.trim()) {
+        this.updateCodeBlockLanguage(selectedLanguage.trim());
+      }
+    },
+    
+    /**
+     * Update code block language
+     */
+    updateCodeBlockLanguage(language) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const editor = this.$refs.editor;
+      const textContent = editor.textContent || '';
+      const cursorPos = this.getTextOffset(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset);
+      
+      // Find the code block containing the cursor
+      const lines = textContent.split('\n');
+      let currentLine = 0;
+      let charCount = 0;
+      
+      // Find which line the cursor is on
+      for (let i = 0; i < lines.length; i++) {
+        if (charCount + lines[i].length >= cursorPos) {
+          currentLine = i;
+          break;
+        }
+        charCount += lines[i].length + 1;
+      }
+      
+      // Find code block boundaries
+      let startLine = -1;
+      let endLine = -1;
+      
+      // Look backwards for opening ```
+      for (let i = currentLine; i >= 0; i--) {
+        if (lines[i].startsWith('```')) {
+          startLine = i;
+          break;
+        }
+      }
+      
+      // Look forwards for closing ```
+      if (startLine !== -1) {
+        for (let i = startLine + 1; i < lines.length; i++) {
+          if (lines[i] === '```') {
+            endLine = i;
+            break;
+          }
+        }
+      }
+      
+      // Update the language if we found a valid code block
+      if (startLine !== -1 && endLine !== -1) {
+        lines[startLine] = `\`\`\`${language}`;
+        const newContent = lines.join('\n');
+        
+        this.isUpdating = true;
+        this.$emit('update:modelValue', newContent);
+        
+        this.$nextTick(() => {
+          this.isUpdating = false;
+          // Force re-render to apply syntax highlighting
+          this.$forceUpdate();
+        });
+      }
     },
 
     insertHorizontalRule() {
