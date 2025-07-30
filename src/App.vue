@@ -575,16 +575,6 @@ export default {
         },
 
         toggleEditMode() {
-            // Force immediate sync before mode switch
-            if (this.isWysiwygMode && this.$refs.wysiwygEditor) {
-                // Cancel any pending debounced updates
-                if (this.$refs.wysiwygEditor.debouncedUpdate) {
-                    this.$refs.wysiwygEditor.debouncedUpdate.cancel();
-                }
-                // Force immediate content sync
-                this.$refs.wysiwygEditor.performContentUpdate(this.$refs.wysiwygEditor.$refs.editor.innerHTML);
-            }
-            
             this.isWysiwygMode = !this.isWysiwygMode;
             
             // Focus the appropriate editor after mode switch
