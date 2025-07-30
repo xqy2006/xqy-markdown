@@ -41,9 +41,10 @@ export default {
       styleManager: new StyleManager(),
       isUpdating: false,
       pendingUpdate: false,
-      markdownPosition: 0, // Current cursor position in markdown
+      lastCursorPosition: 0,
       debouncedStyleUpdate: null,
-      debouncedContentSync: null
+      debouncedContentSync: null,
+      allowNaturalEditing: true // Allow contenteditable to work naturally
     };
   },
   computed: {
@@ -79,11 +80,11 @@ export default {
     // Initialize edit handler with cursor manager
     this.editHandler = new EditHandler(this.cursorManager);
     
-    // Debounced style state update
-    this.debouncedStyleUpdate = debounce(this.updateStyleStates, 100);
+    // Debounced style state update with longer delay to reduce cursor jumping
+    this.debouncedStyleUpdate = debounce(this.updateStyleStates, 300);
     
-    // Debounced content sync for fallback scenarios
-    this.debouncedContentSync = debounce(this.syncContentFromHTML, 300);
+    // Debounced content sync with longer delay for better performance
+    this.debouncedContentSync = debounce(this.syncContentFromHTML, 500);
   },
   mounted() {
     this.initializeEditor();
@@ -124,160 +125,81 @@ export default {
     },
 
     /**
-     * Handle input events - convert to markdown operations
+     * Handle input events - simplified approach
      */
     handleInput(event) {
       if (this.isUpdating) return;
       
-      // Save cursor position before processing
-      this.cursorManager.savePosition(this.$refs.editor);
-      
-      // Detect and handle different types of input operations
-      const operation = this.detectInputOperation(event);
-      
-      if (operation) {
-        event.preventDefault();
-        this.executeMarkdownOperation(() => operation);
-      } else {
-        // Allow some basic operations to proceed and then sync
-        this.debouncedContentSync();
-      }
+      // For basic text input, allow natural contenteditable behavior
+      // Only sync periodically to avoid cursor jumping
+      this.debouncedContentSync();
+      this.debouncedStyleUpdate();
     },
 
     /**
-     * Detect the type of input operation and create appropriate markdown operation
-     */
-    detectInputOperation(event) {
-      const inputType = event.inputType;
-      const data = event.data;
-      
-      switch (inputType) {
-        case 'insertText':
-          return this.handleTextInsertion(data);
-        case 'insertCompositionText':
-          return this.handleTextInsertion(data);
-        case 'deleteContentBackward':
-          return this.handleDeletion('backward');
-        case 'deleteContentForward':
-          return this.handleDeletion('forward');
-        case 'deleteWordBackward':
-          return this.handleDeletion('wordBackward');
-        case 'deleteWordForward':
-          return this.handleDeletion('wordForward');
-        case 'deleteByCut':
-          return this.handleDeletion('cut');
-        case 'insertParagraph':
-        case 'insertLineBreak':
-          return this.handleEnterInsertion();
-        case 'insertFromPaste':
-          // Paste is handled separately in handlePaste
-          return null;
-        default:
-          // Let other operations proceed and sync afterwards
-          return null;
-      }
-    },
-
-    /**
-     * Handle text insertion
-     */
-    handleTextInsertion(text) {
-      if (!text) return null;
-      
-      const position = this.getCurrentMarkdownPosition();
-      return this.editHandler.handleTextInput(this.modelValue, position, text);
-    },
-
-    /**
-     * Handle deletion operations
-     */
-    handleDeletion(type) {
-      const position = this.getCurrentMarkdownPosition();
-      const selection = window.getSelection();
-      
-      if (selection.rangeCount === 0) return null;
-      
-      const range = selection.getRangeAt(0);
-      
-      if (!range.collapsed) {
-        // Delete selected content
-        const startPos = this.cursorManager.htmlToMarkdownOffset(
-          this.$refs.editor.textContent || '',
-          this.modelValue,
-          this.cursorManager.getOffsetInElement(this.$refs.editor, range.startContainer, range.startOffset)
-        );
-        const endPos = this.cursorManager.htmlToMarkdownOffset(
-          this.$refs.editor.textContent || '',
-          this.modelValue,
-          this.cursorManager.getOffsetInElement(this.$refs.editor, range.endContainer, range.endOffset)
-        );
-        
-        return this.editHandler.handleTextDeletion(this.modelValue, startPos, endPos);
-      } else {
-        // Handle single character or word deletion
-        return this.editHandler.handleCharacterDeletion(this.modelValue, position, type);
-      }
-    },
-
-    /**
-     * Handle Enter key insertion
-     */
-    handleEnterInsertion() {
-      const position = this.getCurrentMarkdownPosition();
-      return this.editHandler.handleNewlineInsertion(this.modelValue, position);
-    },
-
-    /**
-     * Sync content after allowing default behavior
+     * Simplified content sync that works more reliably
      */
     syncContentFromHTML() {
       if (this.isUpdating) return;
       
-      const htmlContent = this.$refs.editor.innerHTML;
-      const textContent = this.$refs.editor.textContent || '';
+      const editor = this.$refs.editor;
+      if (!editor) return;
       
-      // This is a simplified sync - in a full implementation, 
-      // we'd parse the HTML structure and convert it back to proper markdown
+      // Save cursor position
+      const selection = window.getSelection();
+      let cursorInfo = null;
+      
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        cursorInfo = {
+          startContainer: range.startContainer,
+          startOffset: range.startOffset,
+          endContainer: range.endContainer,
+          endOffset: range.endOffset
+        };
+      }
+      
+      // Get plain text content - this is a simplified approach
+      // In a full implementation, we'd parse the HTML structure properly
+      const textContent = editor.textContent || '';
+      
       if (textContent !== this.modelValue) {
         this.isUpdating = true;
         this.$emit('update:modelValue', textContent);
         
         this.$nextTick(() => {
+          // Restore cursor position if possible
+          if (cursorInfo && this.isValidNode(cursorInfo.startContainer)) {
+            try {
+              const newRange = document.createRange();
+              newRange.setStart(cursorInfo.startContainer, Math.min(cursorInfo.startOffset, cursorInfo.startContainer.textContent?.length || 0));
+              newRange.setEnd(cursorInfo.endContainer, Math.min(cursorInfo.endOffset, cursorInfo.endContainer.textContent?.length || 0));
+              
+              const newSelection = window.getSelection();
+              newSelection.removeAllRanges();
+              newSelection.addRange(newRange);
+            } catch (error) {
+              console.warn('Could not restore cursor position:', error);
+            }
+          }
+          
           this.isUpdating = false;
         });
       }
     },
-
+    
     /**
-     * Prevent default contenteditable behavior for specific operations
+     * Check if a DOM node is still valid
      */
-    preventDefaultContentEditing(event) {
-      const inputType = event.inputType;
-      
-      // Prevent HTML formatting commands
-      if (inputType && inputType.startsWith('format')) {
-        event.preventDefault();
-        return false;
-      }
-
-      // Prevent direct HTML manipulation
-      if (inputType && (
-        inputType.includes('insertHTML') ||
-        inputType.includes('insertNode') ||
-        inputType.includes('insertLink')
-      )) {
-        event.preventDefault();
-        return false;
-      }
-
-      return true;
+    isValidNode(node) {
+      return node && node.parentNode && document.contains(node);
     },
 
     /**
-     * Handle key down events
+     * Handle key down events - simplified
      */
     handleKeydown(event) {
-      // Handle special key combinations for markdown operations
+      // Only handle essential shortcuts, let contenteditable handle the rest
       if (event.ctrlKey || event.metaKey) {
         switch (event.key) {
           case 'b':
@@ -296,46 +218,20 @@ export default {
             event.preventDefault();
             this.toggleCode();
             break;
-          case 'k':
-            // Ctrl+K for code block
-            event.preventDefault();
-            this.insertCodeBlock();
-            break;
           default:
             break;
         }
       }
-
-      // Handle code block specific shortcuts
-      if (event.key === 'F2') {
-        event.preventDefault();
-        this.showLanguageSelector();
-        return;
-      }
-
-      // Handle Enter key for markdown-aware line breaks
-      if (event.key === 'Enter') {
-        this.handleEnterKey(event);
-      }
-
-      // Handle Tab key for lists and code blocks
-      if (event.key === 'Tab') {
-        this.handleTabKey(event);
-      }
     },
 
     /**
-     * Handle paste events
+     * Handle paste events - simplified
      */
     handlePaste(event) {
-      event.preventDefault();
-      
-      const clipboardData = event.clipboardData || window.clipboardData;
-      const plainText = clipboardData.getData('text/plain');
-      
-      if (plainText) {
-        this.insertTextAtCursor(plainText);
-      }
+      // Allow default paste behavior, then sync content
+      this.$nextTick(() => {
+        this.debouncedContentSync();
+      });
     },
 
     /**
@@ -369,19 +265,79 @@ export default {
     },
 
     /**
-     * Update style states based on current cursor position
+     * Update style states based on current cursor position - simplified
      */
     updateStyleStates() {
       if (!this.$refs.editor) return;
 
-      // Get current cursor position in markdown
-      const markdownPosition = this.getCurrentMarkdownPosition();
+      // Simple style detection based on cursor position
+      const selection = window.getSelection();
+      let styleState = {
+        bold: false,
+        italic: false,
+        underline: false,
+        code: false,
+        strikethrough: false,
+        highlight: false
+      };
       
-      // Update style manager state
-      const styleState = this.styleManager.updateStyleState(this.modelValue, markdownPosition);
+      let headingLevel = 0;
+      
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const textContent = this.$refs.editor.textContent || '';
+        
+        // Simple check for common markdown patterns around cursor
+        const cursorPos = this.getTextOffset(range.startContainer, range.startOffset);
+        const surroundingText = textContent.substring(Math.max(0, cursorPos - 10), cursorPos + 10);
+        
+        // Basic pattern detection
+        styleState.bold = /\*\*.*?\*\*/.test(surroundingText);
+        styleState.italic = /\*.*?\*/.test(surroundingText) && !styleState.bold;
+        styleState.code = /`.*?`/.test(surroundingText);
+        styleState.strikethrough = /~~.*?~~/.test(surroundingText);
+        styleState.underline = /<u>.*?<\/u>/.test(surroundingText);
+        styleState.highlight = /<mark>.*?<\/mark>/.test(surroundingText);
+        
+        // Basic heading detection
+        const lineStart = textContent.lastIndexOf('\n', cursorPos - 1);
+        const lineEnd = textContent.indexOf('\n', cursorPos);
+        const currentLine = textContent.substring(lineStart + 1, lineEnd === -1 ? undefined : lineEnd);
+        const headingMatch = currentLine.match(/^(#{1,6})\s/);
+        if (headingMatch) {
+          headingLevel = headingMatch[1].length;
+        }
+      }
       
       // Emit style state update
-      this.$emit('style-state-update', styleState);
+      this.$emit('style-state-update', {
+        styles: styleState,
+        headingLevel: headingLevel
+      });
+    },
+    
+    /**
+     * Get text offset within the editor
+     */
+    getTextOffset(container, offset) {
+      const walker = document.createTreeWalker(
+        this.$refs.editor,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+      
+      let textOffset = 0;
+      let node;
+      
+      while (node = walker.nextNode()) {
+        if (node === container) {
+          return textOffset + offset;
+        }
+        textOffset += node.textContent.length;
+      }
+      
+      return textOffset;
     },
 
     /**
@@ -486,215 +442,210 @@ export default {
     },
 
     /**
-     * Style toggle methods
+     * Style toggle methods - simplified and more reliable
      */
     toggleBold() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'bold');
-      });
+      this.applyMarkdownStyle('**', '**');
     },
 
     toggleItalic() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'italic');
-      });
+      this.applyMarkdownStyle('*', '*');
     },
 
     toggleUnderline() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'underline');
-      });
+      this.applyMarkdownStyle('<u>', '</u>');
     },
 
     toggleStrikethrough() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'strikethrough');
-      });
+      this.applyMarkdownStyle('~~', '~~');
     },
 
     toggleCode() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'code');
-      });
+      this.applyMarkdownStyle('`', '`');
     },
 
     toggleHighlight() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'highlight');
-      });
+      this.applyMarkdownStyle('<mark>', '</mark>');
+    },
+    
+    /**
+     * Apply markdown style to selected text or at cursor position
+     */
+    applyMarkdownStyle(prefix, suffix) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString();
+      
+      // Create the styled text
+      const styledText = prefix + selectedText + suffix;
+      
+      // Replace the selection with styled text
+      range.deleteContents();
+      range.insertNode(document.createTextNode(styledText));
+      
+      // Position cursor after the styled text
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      // Sync content after style application
+      this.debouncedContentSync();
+      this.debouncedStyleUpdate();
     },
 
     /**
-     * Block operation methods
+     * Block operation methods - simplified and working
      */
     toggleHeading() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleHeadingToggle(this.modelValue, position);
-      });
+      this.insertAtLineStart('#');
     },
 
     insertUnorderedList() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleListInsertion(this.modelValue, position, 'unordered');
-      });
+      this.insertAtLineStart('- ');
     },
 
     insertTaskList() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleListInsertion(this.modelValue, position, 'task');
-      });
+      this.insertAtLineStart('- [ ] ');
     },
 
     insertBlockQuote() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleBlockquoteInsertion(this.modelValue, position);
-      });
+      this.insertAtLineStart('> ');
     },
 
     insertCodeBlock() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleCodeBlockInsertion(this.modelValue, position);
-      });
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const codeBlock = '\n```\n\n```\n';
+      
+      range.deleteContents();
+      range.insertNode(document.createTextNode(codeBlock));
+      
+      // Position cursor inside the code block
+      const textNode = range.startContainer.nextSibling;
+      if (textNode) {
+        range.setStart(textNode, 4); // Position after ```\n
+        range.collapse(true);
+      }
+      
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      this.debouncedContentSync();
     },
 
     insertHorizontalRule() {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleHorizontalRuleInsertion(this.modelValue, position);
-      });
+      this.insertAtLineStart('---\n');
+    },
+    
+    /**
+     * Insert text at the beginning of the current line
+     */
+    insertAtLineStart(text) {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      
+      // Find the start of the current line
+      let container = range.startContainer;
+      let offset = range.startOffset;
+      
+      // Navigate to line start
+      while (container && container.nodeType === Node.TEXT_NODE) {
+        const textContent = container.textContent;
+        const lineStart = textContent.lastIndexOf('\n', offset - 1);
+        
+        if (lineStart !== -1) {
+          range.setStart(container, lineStart + 1);
+          break;
+        } else if (container.previousSibling) {
+          container = container.previousSibling;
+          offset = container.textContent ? container.textContent.length : 0;
+        } else {
+          // We're at the beginning of the content
+          range.setStart(container, 0);
+          break;
+        }
+      }
+      
+      // Insert the text
+      range.collapse(true);
+      range.insertNode(document.createTextNode(text));
+      
+      // Move cursor to end of inserted text
+      range.setStartAfter(range.startContainer);
+      range.collapse(true);
+      
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      this.debouncedContentSync();
     },
 
     insertImage() {
       const url = prompt('请输入图片URL:');
       if (url) {
-        this.executeMarkdownOperation(() => {
-          const position = this.getCurrentMarkdownPosition();
-          return this.editHandler.handleImageInsertion(this.modelValue, position, url);
-        });
+        const imageMarkdown = `![alt text](${url})`;
+        this.insertTextAtCursor(imageMarkdown);
       }
     },
 
     insertMathInline() {
       const latex = prompt('请输入LaTeX公式:');
       if (latex) {
-        this.executeMarkdownOperation(() => {
-          const position = this.getCurrentMarkdownPosition();
-          return this.editHandler.handleMathInsertion(this.modelValue, position, latex, false);
-        });
+        const mathMarkdown = `$${latex}$`;
+        this.insertTextAtCursor(mathMarkdown);
       }
     },
 
     insertMathBlock() {
       const latex = prompt('请输入LaTeX块级公式:');
       if (latex) {
-        this.executeMarkdownOperation(() => {
-          const position = this.getCurrentMarkdownPosition();
-          return this.editHandler.handleMathInsertion(this.modelValue, position, latex, true);
-        });
+        const mathMarkdown = `\n$$\n${latex}\n$$\n`;
+        this.insertTextAtCursor(mathMarkdown);
       }
     },
 
     insertColorText(color) {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleStyleToggle(this.modelValue, position, position, 'highlight');
-      });
-    },
-
-    /**
-     * Code block specific methods
-     */
-    insertCodeBlockWithLanguage(language = '') {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleCodeBlockInsertion(this.modelValue, position, language);
-      });
-    },
-
-    updateCodeBlockLanguage(newLanguage) {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleCodeBlockLanguageUpdate(this.modelValue, position, newLanguage);
-      });
-    },
-
-    getCodeBlockInfo() {
-      const position = this.getCurrentMarkdownPosition();
-      return this.editHandler.getCodeBlockInfo(this.modelValue, position);
-    },
-
-    /**
-     * Enhanced language selection for code blocks
-     */
-    showLanguageSelector() {
-      const codeBlockInfo = this.getCodeBlockInfo();
-      if (codeBlockInfo.inCodeBlock) {
-        const languages = [
-          'javascript', 'python', 'java', 'cpp', 'c', 'csharp',
-          'typescript', 'html', 'css', 'sql', 'bash', 'json',
-          'xml', 'yaml', 'markdown', 'php', 'ruby', 'go',
-          'rust', 'swift', 'kotlin', 'dart', 'plaintext'
-        ];
-        
-        const currentLanguage = codeBlockInfo.language;
-        const newLanguage = prompt(`当前语言: ${currentLanguage || '无'}\n请输入新语言 (${languages.slice(0, 10).join(', ')}, ...):`);
-        
-        if (newLanguage !== null) {
-          this.updateCodeBlockLanguage(newLanguage.trim());
-        }
-      }
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      const selectedText = range.toString() || 'colored text';
+      const coloredText = `<font color="${color}">${selectedText}</font>`;
+      
+      range.deleteContents();
+      range.insertNode(document.createTextNode(coloredText));
+      range.collapse(false);
+      
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      this.debouncedContentSync();
     },
 
     /**
      * Helper methods
      */
     insertTextAtCursor(text) {
-      this.executeMarkdownOperation(() => {
-        const position = this.getCurrentMarkdownPosition();
-        return this.editHandler.handleTextInput(this.modelValue, position, text);
-      });
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return;
+      
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(text));
+      range.collapse(false);
+      
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      this.debouncedContentSync();
     },
 
-    handleEnterKey(event) {
-      // Check if we're in a code block for special handling
-      const codeBlockInfo = this.getCodeBlockInfo();
-      
-      if (codeBlockInfo.inCodeBlock) {
-        // Allow default behavior in code blocks, but could enhance later
-        return;
-      }
-      
-      // Allow default behavior for now
-      // In full implementation, would handle list continuation, etc.
-    },
-
-    handleTabKey(event) {
-      // Check if we're in a code block
-      const codeBlockInfo = this.getCodeBlockInfo();
-      
-      if (codeBlockInfo.inCodeBlock) {
-        // Allow tab in code blocks for indentation
-        return;
-      }
-      
-      // Allow default behavior for now
-      // In full implementation, would handle list indentation, etc.
-    },
-
-    /**
-     * Public methods for external access
-     */
     focus() {
       if (this.$refs.editor) {
         this.$refs.editor.focus();
@@ -703,6 +654,25 @@ export default {
 
     insertMarkdown(markdownText) {
       this.insertTextAtCursor(markdownText);
+    },
+    
+    /**
+     * Simple method to get current cursor position (simplified)
+     */
+    getCurrentMarkdownPosition() {
+      const selection = window.getSelection();
+      if (!selection.rangeCount) return 0;
+
+      const range = selection.getRangeAt(0);
+      return this.getTextOffset(range.startContainer, range.startOffset);
+    },
+    
+    /**
+     * Restore cursor position after content update (simplified)
+     */
+    restoreCursorAfterUpdate() {
+      // In the simplified approach, we don't try to map positions
+      // The cursor should stay where the user left it naturally
     }
   }
 }

@@ -1757,7 +1757,7 @@ export default {
             }
             
             if (this.isWysiwygMode) {
-                this.$refs.wysiwygEditor?.insertHighlight();
+                this.$refs.wysiwygEditor?.toggleHighlight();
             } else {
                 this.add4('<mark>', '</mark>');
             }
