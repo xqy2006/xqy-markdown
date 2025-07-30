@@ -55,7 +55,8 @@
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block toolbar-row primary-toolbar" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
             <td><IconButton :icon="currentHeadingIcon" tooltip="标题" @click="handleHeading()" /></td>
-            <td><IconButton icon="code-block" tooltip="代码块" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="code-block" tooltip="代码块 (Ctrl+K)" @click="handleCodeBlock()" /></td>
+            <td><IconButton icon="settings" tooltip="代码语言 (F2)" @click="handleCodeLanguage()" /></td>
             <td><IconButton icon="code" tooltip="单行代码" :variant="codeButtonClass.replace('btn-', '')" @click="handleCode()" /></td>
             <td><IconButton icon="image" tooltip="图片" @click="handleImage()" /></td>
             <td><IconButton icon="quote" tooltip="引用" @click="handleQuote()" /></td>
@@ -105,9 +106,9 @@
             <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
         </div>
         <div v-else style="margin-top: 5px;">
-            <WysiwygEditor 
+            <WysiwygEditorDual 
                 v-model="mdtext" 
-                :get-markdown-renderer="getMarkdownRenderer"
+                :markdownRenderer="get_md"
                 @style-state-update="handleStyleStateUpdate"
                 ref="wysiwygEditor"
             />
@@ -402,11 +403,19 @@ import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
 import WysiwygEditor from './components/WysiwygEditor.vue'
+import WysiwygEditorRefactored from './components/WysiwygEditorRefactored.vue'
+import WysiwygEditorFixed from './components/WysiwygEditorFixed.vue'
+import WysiwygEditorSimple from './components/WysiwygEditorSimple.vue'
+import WysiwygEditorDual from './components/WysiwygEditorDual.vue'
 import IconButton from './components/IconButton.vue'
 
 export default {
     components: {
         WysiwygEditor,
+        WysiwygEditorRefactored,
+        WysiwygEditorFixed,
+        WysiwygEditorSimple,
+        WysiwygEditorDual,
         IconButton
     },
     data() {
@@ -573,16 +582,6 @@ export default {
         },
 
         toggleEditMode() {
-            // Force immediate sync before mode switch
-            if (this.isWysiwygMode && this.$refs.wysiwygEditor) {
-                // Cancel any pending debounced updates
-                if (this.$refs.wysiwygEditor.debouncedUpdate) {
-                    this.$refs.wysiwygEditor.debouncedUpdate.cancel();
-                }
-                // Force immediate content sync
-                this.$refs.wysiwygEditor.performContentUpdate(this.$refs.wysiwygEditor.$refs.editor.innerHTML);
-            }
-            
             this.isWysiwygMode = !this.isWysiwygMode;
             
             // Focus the appropriate editor after mode switch
@@ -1635,6 +1634,22 @@ export default {
                 this.add1('\n```\n');
             }
         },
+        
+        handleCodeLanguage() {
+            if (!this.ensureEditorFocus()) {
+                this.$nextTick(() => {
+                    setTimeout(() => this.handleCodeLanguage(), 50);
+                });
+                return;
+            }
+            
+            if (this.isWysiwygMode) {
+                this.$refs.wysiwygEditor?.showCodeBlockLanguageSelector();
+            } else {
+                // In normal mode, just show a hint
+                alert('请切换到WYSIWYG模式使用代码语言选择功能，或手动在代码块第一行添加语言标识，如: ```javascript');
+            }
+        },
 
         handleQuote() {
             if (!this.ensureEditorFocus()) {
@@ -1765,7 +1780,7 @@ export default {
             }
             
             if (this.isWysiwygMode) {
-                this.$refs.wysiwygEditor?.insertHighlight();
+                this.$refs.wysiwygEditor?.toggleHighlight();
             } else {
                 this.add4('<mark>', '</mark>');
             }
