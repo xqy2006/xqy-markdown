@@ -98,13 +98,17 @@ export default {
      * Initialize the editor
      */
     initializeEditor() {
-      if (!this.$refs.editor) return;
-      
-      // Ensure editor has focus capability
-      this.$refs.editor.setAttribute('contenteditable', 'true');
-      
-      // Set up initial state
-      this.updateStyleStates();
+      try {
+        if (!this.$refs.editor) return;
+        
+        // Ensure editor has focus capability
+        this.$refs.editor.setAttribute('contenteditable', 'true');
+        
+        // Set up initial state
+        this.updateStyleStates();
+      } catch (error) {
+        console.error('Error initializing WYSIWYG editor:', error);
+      }
     },
 
     /**
@@ -142,49 +146,54 @@ export default {
     syncContentFromHTML() {
       if (this.isUpdating) return;
       
-      const editor = this.$refs.editor;
-      if (!editor) return;
-      
-      // Save cursor position
-      const selection = window.getSelection();
-      let cursorInfo = null;
-      
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        cursorInfo = {
-          startContainer: range.startContainer,
-          startOffset: range.startOffset,
-          endContainer: range.endContainer,
-          endOffset: range.endOffset
-        };
-      }
-      
-      // Get plain text content - this is a simplified approach
-      // In a full implementation, we'd parse the HTML structure properly
-      const textContent = editor.textContent || '';
-      
-      if (textContent !== this.modelValue) {
-        this.isUpdating = true;
-        this.$emit('update:modelValue', textContent);
+      try {
+        const editor = this.$refs.editor;
+        if (!editor) return;
         
-        this.$nextTick(() => {
-          // Restore cursor position if possible
-          if (cursorInfo && this.isValidNode(cursorInfo.startContainer)) {
-            try {
-              const newRange = document.createRange();
-              newRange.setStart(cursorInfo.startContainer, Math.min(cursorInfo.startOffset, cursorInfo.startContainer.textContent?.length || 0));
-              newRange.setEnd(cursorInfo.endContainer, Math.min(cursorInfo.endOffset, cursorInfo.endContainer.textContent?.length || 0));
-              
-              const newSelection = window.getSelection();
-              newSelection.removeAllRanges();
-              newSelection.addRange(newRange);
-            } catch (error) {
-              console.warn('Could not restore cursor position:', error);
-            }
-          }
+        // Save cursor position
+        const selection = window.getSelection();
+        let cursorInfo = null;
+        
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          cursorInfo = {
+            startContainer: range.startContainer,
+            startOffset: range.startOffset,
+            endContainer: range.endContainer,
+            endOffset: range.endOffset
+          };
+        }
+        
+        // Get plain text content - this is a simplified approach
+        // In a full implementation, we'd parse the HTML structure properly
+        const textContent = editor.textContent || '';
+        
+        if (textContent !== this.modelValue) {
+          this.isUpdating = true;
+          this.$emit('update:modelValue', textContent);
           
-          this.isUpdating = false;
-        });
+          this.$nextTick(() => {
+            // Restore cursor position if possible
+            if (cursorInfo && this.isValidNode(cursorInfo.startContainer)) {
+              try {
+                const newRange = document.createRange();
+                newRange.setStart(cursorInfo.startContainer, Math.min(cursorInfo.startOffset, cursorInfo.startContainer.textContent?.length || 0));
+                newRange.setEnd(cursorInfo.endContainer, Math.min(cursorInfo.endOffset, cursorInfo.endContainer.textContent?.length || 0));
+                
+                const newSelection = window.getSelection();
+                newSelection.removeAllRanges();
+                newSelection.addRange(newRange);
+              } catch (error) {
+                console.warn('Could not restore cursor position:', error);
+              }
+            }
+            
+            this.isUpdating = false;
+          });
+        }
+      } catch (error) {
+        console.error('Error in content sync:', error);
+        this.isUpdating = false;
       }
     },
     
@@ -534,27 +543,33 @@ export default {
      * Apply markdown style to selected text or at cursor position
      */
     applyMarkdownStyle(prefix, suffix) {
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-      
-      const range = selection.getRangeAt(0);
-      const selectedText = range.toString();
-      
-      // Create the styled text
-      const styledText = prefix + selectedText + suffix;
-      
-      // Replace the selection with styled text
-      range.deleteContents();
-      range.insertNode(document.createTextNode(styledText));
-      
-      // Position cursor after the styled text
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      
-      // Sync content after style application
-      this.debouncedContentSync();
-      this.debouncedStyleUpdate();
+      try {
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
+        
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString();
+        
+        // Create the styled text
+        const styledText = prefix + selectedText + suffix;
+        
+        // Replace the selection with styled text
+        range.deleteContents();
+        range.insertNode(document.createTextNode(styledText));
+        
+        // Position cursor after the styled text
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Sync content after style application
+        this.debouncedContentSync();
+        this.debouncedStyleUpdate();
+      } catch (error) {
+        console.warn('Error applying markdown style:', error);
+        // Fallback: just sync content
+        this.debouncedContentSync();
+      }
     },
 
     /**
