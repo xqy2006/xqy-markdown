@@ -292,9 +292,25 @@ export default {
             event.preventDefault();
             this.toggleUnderline();
             break;
+          case '`':
+            event.preventDefault();
+            this.toggleCode();
+            break;
+          case 'k':
+            // Ctrl+K for code block
+            event.preventDefault();
+            this.insertCodeBlock();
+            break;
           default:
             break;
         }
+      }
+
+      // Handle code block specific shortcuts
+      if (event.key === 'F2') {
+        event.preventDefault();
+        this.showLanguageSelector();
+        return;
       }
 
       // Handle Enter key for markdown-aware line breaks
@@ -597,6 +613,50 @@ export default {
     },
 
     /**
+     * Code block specific methods
+     */
+    insertCodeBlockWithLanguage(language = '') {
+      this.executeMarkdownOperation(() => {
+        const position = this.getCurrentMarkdownPosition();
+        return this.editHandler.handleCodeBlockInsertion(this.modelValue, position, language);
+      });
+    },
+
+    updateCodeBlockLanguage(newLanguage) {
+      this.executeMarkdownOperation(() => {
+        const position = this.getCurrentMarkdownPosition();
+        return this.editHandler.handleCodeBlockLanguageUpdate(this.modelValue, position, newLanguage);
+      });
+    },
+
+    getCodeBlockInfo() {
+      const position = this.getCurrentMarkdownPosition();
+      return this.editHandler.getCodeBlockInfo(this.modelValue, position);
+    },
+
+    /**
+     * Enhanced language selection for code blocks
+     */
+    showLanguageSelector() {
+      const codeBlockInfo = this.getCodeBlockInfo();
+      if (codeBlockInfo.inCodeBlock) {
+        const languages = [
+          'javascript', 'python', 'java', 'cpp', 'c', 'csharp',
+          'typescript', 'html', 'css', 'sql', 'bash', 'json',
+          'xml', 'yaml', 'markdown', 'php', 'ruby', 'go',
+          'rust', 'swift', 'kotlin', 'dart', 'plaintext'
+        ];
+        
+        const currentLanguage = codeBlockInfo.language;
+        const newLanguage = prompt(`当前语言: ${currentLanguage || '无'}\n请输入新语言 (${languages.slice(0, 10).join(', ')}, ...):`);
+        
+        if (newLanguage !== null) {
+          this.updateCodeBlockLanguage(newLanguage.trim());
+        }
+      }
+    },
+
+    /**
      * Helper methods
      */
     insertTextAtCursor(text) {
@@ -607,11 +667,27 @@ export default {
     },
 
     handleEnterKey(event) {
+      // Check if we're in a code block for special handling
+      const codeBlockInfo = this.getCodeBlockInfo();
+      
+      if (codeBlockInfo.inCodeBlock) {
+        // Allow default behavior in code blocks, but could enhance later
+        return;
+      }
+      
       // Allow default behavior for now
       // In full implementation, would handle list continuation, etc.
     },
 
     handleTabKey(event) {
+      // Check if we're in a code block
+      const codeBlockInfo = this.getCodeBlockInfo();
+      
+      if (codeBlockInfo.inCodeBlock) {
+        // Allow tab in code blocks for indentation
+        return;
+      }
+      
       // Allow default behavior for now
       // In full implementation, would handle list indentation, etc.
     },

@@ -197,7 +197,7 @@ export class EditHandler {
   }
 
   /**
-   * Handle code block insertion
+   * Handle code block insertion with language support
    * @param {string} markdownContent - Current markdown content
    * @param {number} position - Cursor position
    * @param {string} language - Programming language
@@ -212,6 +212,139 @@ export class EditHandler {
     return {
       content: before + codeBlock + after,
       cursorPosition: position + codeBlock.indexOf('Your code here...')
+    };
+  }
+
+  /**
+   * Handle code block language update
+   * @param {string} markdownContent - Current markdown content
+   * @param {number} position - Cursor position within code block
+   * @param {string} newLanguage - New programming language
+   * @returns {Object} { content: newMarkdown, cursorPosition: newPosition }
+   */
+  handleCodeBlockLanguageUpdate(markdownContent, position, newLanguage) {
+    const lines = markdownContent.split('\n');
+    let lineIndex = 0;
+    let charCount = 0;
+
+    // Find which line the cursor is on
+    for (let i = 0; i < lines.length; i++) {
+      if (charCount + lines[i].length >= position) {
+        lineIndex = i;
+        break;
+      }
+      charCount += lines[i].length + 1;
+    }
+
+    // Find the code block boundaries
+    let startLine = -1;
+    let endLine = -1;
+
+    // Look backwards for code block start
+    for (let i = lineIndex; i >= 0; i--) {
+      if (lines[i].startsWith('```')) {
+        startLine = i;
+        break;
+      }
+    }
+
+    // Look forwards for code block end
+    for (let i = lineIndex; i < lines.length; i++) {
+      if (i > startLine && lines[i].startsWith('```')) {
+        endLine = i;
+        break;
+      }
+    }
+
+    if (startLine !== -1 && endLine !== -1) {
+      // Update the language in the opening fence
+      const languageMatch = lines[startLine].match(/^```(.*)$/);
+      if (languageMatch) {
+        lines[startLine] = '```' + newLanguage;
+        
+        return {
+          content: lines.join('\n'),
+          cursorPosition: position
+        };
+      }
+    }
+
+    return { content: markdownContent, cursorPosition: position };
+  }
+
+  /**
+   * Check if position is within a code block
+   * @param {string} markdownContent - Current markdown content
+   * @param {number} position - Cursor position
+   * @returns {Object} { inCodeBlock: boolean, language: string, startPos: number, endPos: number }
+   */
+  getCodeBlockInfo(markdownContent, position) {
+    const lines = markdownContent.split('\n');
+    let lineIndex = 0;
+    let charCount = 0;
+
+    // Find which line the cursor is on
+    for (let i = 0; i < lines.length; i++) {
+      if (charCount + lines[i].length >= position) {
+        lineIndex = i;
+        break;
+      }
+      charCount += lines[i].length + 1;
+    }
+
+    // Find code block boundaries
+    let startLine = -1;
+    let endLine = -1;
+    let language = '';
+
+    // Look backwards for code block start
+    for (let i = lineIndex; i >= 0; i--) {
+      if (lines[i].startsWith('```')) {
+        startLine = i;
+        const languageMatch = lines[i].match(/^```(.*)$/);
+        language = languageMatch ? languageMatch[1].trim() : '';
+        break;
+      }
+    }
+
+    // Look forwards for code block end
+    for (let i = lineIndex; i < lines.length; i++) {
+      if (i > startLine && lines[i].startsWith('```')) {
+        endLine = i;
+        break;
+      }
+    }
+
+    if (startLine !== -1 && endLine !== -1) {
+      // Calculate positions
+      let startPos = 0;
+      let endPos = 0;
+      
+      for (let i = 0; i < startLine; i++) {
+        startPos += lines[i].length + 1;
+      }
+      
+      for (let i = 0; i <= endLine; i++) {
+        endPos += lines[i].length + 1;
+      }
+      
+      return {
+        inCodeBlock: true,
+        language,
+        startPos,
+        endPos: endPos - 1,
+        startLine,
+        endLine
+      };
+    }
+
+    return {
+      inCodeBlock: false,
+      language: '',
+      startPos: -1,
+      endPos: -1,
+      startLine: -1,
+      endLine: -1
     };
   }
 
