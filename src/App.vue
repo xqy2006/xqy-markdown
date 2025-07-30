@@ -105,7 +105,7 @@
             <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
         </div>
         <div v-else style="margin-top: 5px;">
-            <WysiwygEditor 
+            <WysiwygEditorRefactored 
                 v-model="mdtext" 
                 :get-markdown-renderer="getMarkdownRenderer"
                 @style-state-update="handleStyleStateUpdate"
@@ -402,11 +402,13 @@ import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
 import WysiwygEditor from './components/WysiwygEditor.vue'
+import WysiwygEditorRefactored from './components/WysiwygEditorRefactored.vue'
 import IconButton from './components/IconButton.vue'
 
 export default {
     components: {
         WysiwygEditor,
+        WysiwygEditorRefactored,
         IconButton
     },
     data() {
