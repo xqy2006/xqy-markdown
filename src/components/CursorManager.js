@@ -94,29 +94,118 @@ export class CursorManager {
 
   /**
    * Convert HTML offset to Markdown offset
-   * @param {string} htmlContent - Rendered HTML content
+   * @param {string} htmlContent - Rendered HTML content (text content)
    * @param {string} markdownContent - Source markdown
-   * @param {number} htmlOffset - Offset in HTML content
+   * @param {number} htmlOffset - Offset in HTML text content
    * @returns {number} Corresponding offset in markdown
    */
   htmlToMarkdownOffset(htmlContent, markdownContent, htmlOffset) {
-    // This is a simplified implementation
-    // A more sophisticated version would parse both HTML and Markdown structures
-    const ratio = markdownContent.length / htmlContent.length;
-    return Math.floor(htmlOffset * ratio);
+    // Advanced mapping strategy
+    if (!htmlContent || !markdownContent) return 0;
+    
+    // Strategy 1: Try character-by-character mapping for simple cases
+    if (this.isSimpleContent(markdownContent)) {
+      const ratio = markdownContent.length / htmlContent.length;
+      return Math.min(Math.floor(htmlOffset * ratio), markdownContent.length);
+    }
+    
+    // Strategy 2: Line-by-line mapping for complex content
+    return this.mapOffsetByLines(htmlContent, markdownContent, htmlOffset, 'htmlToMarkdown');
   }
 
   /**
    * Convert Markdown offset to HTML offset
    * @param {string} markdownContent - Source markdown
-   * @param {string} htmlContent - Rendered HTML content  
+   * @param {string} htmlContent - Rendered HTML content (text content)
    * @param {number} markdownOffset - Offset in markdown
    * @returns {number} Corresponding offset in HTML
    */
   markdownToHtmlOffset(markdownContent, htmlContent, markdownOffset) {
-    // This is a simplified implementation
-    const ratio = htmlContent.length / markdownContent.length;
-    return Math.floor(markdownOffset * ratio);
+    // Advanced mapping strategy
+    if (!markdownContent || !htmlContent) return 0;
+    
+    // Strategy 1: Try character-by-character mapping for simple cases
+    if (this.isSimpleContent(markdownContent)) {
+      const ratio = htmlContent.length / markdownContent.length;
+      return Math.min(Math.floor(markdownOffset * ratio), htmlContent.length);
+    }
+    
+    // Strategy 2: Line-by-line mapping for complex content
+    return this.mapOffsetByLines(markdownContent, htmlContent, markdownOffset, 'markdownToHtml');
+  }
+
+  /**
+   * Check if content is simple (no complex markdown structures)
+   * @param {string} content - Content to check
+   * @returns {boolean} Whether content is simple
+   */
+  isSimpleContent(content) {
+    // Check for complex markdown patterns
+    const complexPatterns = [
+      /```/, // Code blocks
+      /\|.*\|/, // Tables
+      /\$\$/, // Math blocks
+      /\[.*\]\(.*\)/, // Links
+      /!\[.*\]\(.*\)/, // Images
+      /^#{1,6}\s/, // Headers
+      /^\s*[-*+]\s/, // Lists
+      /^\s*\d+\.\s/, // Numbered lists
+      /^\s*>\s/ // Blockquotes
+    ];
+    
+    return !complexPatterns.some(pattern => pattern.test(content));
+  }
+
+  /**
+   * Map offset by comparing line positions
+   * @param {string} sourceContent - Source content
+   * @param {string} targetContent - Target content
+   * @param {number} sourceOffset - Offset in source
+   * @param {string} direction - 'htmlToMarkdown' or 'markdownToHtml'
+   * @returns {number} Mapped offset
+   */
+  mapOffsetByLines(sourceContent, targetContent, sourceOffset, direction) {
+    const sourceLines = sourceContent.split('\n');
+    const targetLines = targetContent.split('\n');
+    
+    // Find line and position within line
+    let currentOffset = 0;
+    let lineIndex = 0;
+    let positionInLine = 0;
+    
+    for (let i = 0; i < sourceLines.length; i++) {
+      if (currentOffset + sourceLines[i].length >= sourceOffset) {
+        lineIndex = i;
+        positionInLine = sourceOffset - currentOffset;
+        break;
+      }
+      currentOffset += sourceLines[i].length + 1; // +1 for newline
+    }
+    
+    // Map to corresponding line in target
+    if (lineIndex >= targetLines.length) {
+      // Past end of target, return end position
+      return targetContent.length;
+    }
+    
+    // Calculate target offset
+    let targetOffset = 0;
+    for (let i = 0; i < lineIndex; i++) {
+      targetOffset += targetLines[i].length + 1;
+    }
+    
+    // Map position within line
+    const sourceLine = sourceLines[lineIndex] || '';
+    const targetLine = targetLines[lineIndex] || '';
+    
+    if (sourceLine.length === 0) {
+      targetOffset += Math.min(positionInLine, targetLine.length);
+    } else {
+      const ratio = targetLine.length / sourceLine.length;
+      targetOffset += Math.min(Math.floor(positionInLine * ratio), targetLine.length);
+    }
+    
+    return Math.min(targetOffset, targetContent.length);
   }
 
   /**

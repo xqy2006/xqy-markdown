@@ -274,44 +274,138 @@ export class EditHandler {
   }
 
   /**
-   * Detect current style state at position
+   * Handle text deletion
    * @param {string} markdownContent - Current markdown content
-   * @param {number} position - Cursor position
-   * @returns {Object} Style state object
+   * @param {number} startPos - Start position of deletion
+   * @param {number} endPos - End position of deletion
+   * @returns {Object} { content: newMarkdown, cursorPosition: newPosition }
    */
-  detectStyleState(markdownContent, position) {
-    // Look around the cursor position for style markers
-    const before = markdownContent.slice(Math.max(0, position - 10), position);
-    const after = markdownContent.slice(position, position + 10);
+  handleTextDeletion(markdownContent, startPos, endPos) {
+    const before = markdownContent.slice(0, startPos);
+    const after = markdownContent.slice(endPos);
     
     return {
-      bold: (before.endsWith('**') && after.startsWith('**')) || (before.includes('**') && after.includes('**')),
-      italic: (before.endsWith('*') && after.startsWith('*')) || (before.includes('*') && after.includes('*')),
-      strikethrough: (before.endsWith('~~') && after.startsWith('~~')) || (before.includes('~~') && after.includes('~~')),
-      code: (before.endsWith('`') && after.startsWith('`')) || (before.includes('`') && after.includes('`')),
-      underline: (before.includes('<u>') && after.includes('</u>')),
-      highlight: (before.includes('<mark>') && after.includes('</mark>'))
+      content: before + after,
+      cursorPosition: startPos
     };
   }
 
   /**
-   * Detect current heading level at position
+   * Handle character deletion
    * @param {string} markdownContent - Current markdown content
    * @param {number} position - Cursor position
-   * @returns {number} Heading level (0-6)
+   * @param {string} type - Type of deletion ('backward', 'forward', 'wordBackward', etc.)
+   * @returns {Object} { content: newMarkdown, cursorPosition: newPosition }
    */
-  detectHeadingLevel(markdownContent, position) {
+  handleCharacterDeletion(markdownContent, position, type) {
+    let deleteStart = position;
+    let deleteEnd = position;
+    
+    switch (type) {
+      case 'backward':
+        deleteStart = Math.max(0, position - 1);
+        deleteEnd = position;
+        break;
+      case 'forward':
+        deleteStart = position;
+        deleteEnd = Math.min(markdownContent.length, position + 1);
+        break;
+      case 'wordBackward':
+        // Find word boundary backwards
+        deleteStart = this.findWordBoundary(markdownContent, position, 'backward');
+        deleteEnd = position;
+        break;
+      case 'wordForward':
+        // Find word boundary forwards
+        deleteStart = position;
+        deleteEnd = this.findWordBoundary(markdownContent, position, 'forward');
+        break;
+      default:
+        return { content: markdownContent, cursorPosition: position };
+    }
+    
+    const before = markdownContent.slice(0, deleteStart);
+    const after = markdownContent.slice(deleteEnd);
+    
+    return {
+      content: before + after,
+      cursorPosition: deleteStart
+    };
+  }
+
+  /**
+   * Handle newline insertion with smart list continuation
+   * @param {string} markdownContent - Current markdown content
+   * @param {number} position - Cursor position
+   * @returns {Object} { content: newMarkdown, cursorPosition: newPosition }
+   */
+  handleNewlineInsertion(markdownContent, position) {
     const lines = markdownContent.split('\n');
     let charCount = 0;
-
+    let lineIndex = 0;
+    
+    // Find which line the cursor is on
     for (let i = 0; i < lines.length; i++) {
       if (charCount + lines[i].length >= position) {
-        const match = lines[i].match(/^(#{1,6})\s*/);
-        return match ? match[1].length : 0;
+        lineIndex = i;
+        break;
       }
       charCount += lines[i].length + 1;
     }
+    
+    const currentLine = lines[lineIndex];
+    const positionInLine = position - charCount;
+    
+    // Check for list continuation
+    const listMatch = currentLine.match(/^(\s*[-*+]\s*(?:\[[x ]\]\s*)?)/);
+    const blockQuoteMatch = currentLine.match(/^(\s*>\s*)/);
+    
+    let newlineText = '\n';
+    let cursorOffset = 1;
+    
+    if (listMatch && positionInLine >= listMatch[1].length) {
+      // Continue list
+      newlineText = '\n' + listMatch[1];
+      cursorOffset = newlineText.length;
+    } else if (blockQuoteMatch && positionInLine >= blockQuoteMatch[1].length) {
+      // Continue blockquote
+      newlineText = '\n' + blockQuoteMatch[1];
+      cursorOffset = newlineText.length;
+    }
+    
+    const before = markdownContent.slice(0, position);
+    const after = markdownContent.slice(position);
+    
+    return {
+      content: before + newlineText + after,
+      cursorPosition: position + cursorOffset
+    };
+  }
 
-    return 0;
+  /**
+   * Find word boundary
+   * @param {string} content - Text content
+   * @param {number} position - Starting position
+   * @param {string} direction - 'forward' or 'backward'
+   * @returns {number} Word boundary position
+   */
+  findWordBoundary(content, position, direction) {
+    const wordRegex = /\w/;
+    
+    if (direction === 'backward') {
+      for (let i = position - 1; i >= 0; i--) {
+        if (!wordRegex.test(content[i])) {
+          return i + 1;
+        }
+      }
+      return 0;
+    } else {
+      for (let i = position; i < content.length; i++) {
+        if (!wordRegex.test(content[i])) {
+          return i;
+        }
+      }
+      return content.length;
+    }
   }
 }

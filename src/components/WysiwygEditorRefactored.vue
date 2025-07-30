@@ -42,7 +42,8 @@ export default {
       isUpdating: false,
       pendingUpdate: false,
       markdownPosition: 0, // Current cursor position in markdown
-      debouncedStyleUpdate: null
+      debouncedStyleUpdate: null,
+      debouncedContentSync: null
     };
   },
   computed: {
@@ -69,6 +70,7 @@ export default {
         // Content changed externally, update the editor
         this.$nextTick(() => {
           this.restoreCursorAfterUpdate();
+          this.updateStyleStates();
         });
       }
     }
@@ -79,6 +81,9 @@ export default {
     
     // Debounced style state update
     this.debouncedStyleUpdate = debounce(this.updateStyleStates, 100);
+    
+    // Debounced content sync for fallback scenarios
+    this.debouncedContentSync = debounce(this.syncContentFromHTML, 300);
   },
   mounted() {
     this.initializeEditor();
@@ -124,29 +129,143 @@ export default {
     handleInput(event) {
       if (this.isUpdating) return;
       
-      this.preventDefaultContentEditing(event);
-      
-      // Get the current selection/cursor position
-      const selection = window.getSelection();
-      if (!selection.rangeCount) return;
-
       // Save cursor position before processing
       this.cursorManager.savePosition(this.$refs.editor);
-
-      // For now, we'll use a simplified approach
-      // In a full implementation, we'd detect the exact edit operation
-      this.debouncedStyleUpdate();
+      
+      // Detect and handle different types of input operations
+      const operation = this.detectInputOperation(event);
+      
+      if (operation) {
+        event.preventDefault();
+        this.executeMarkdownOperation(() => operation);
+      } else {
+        // Allow some basic operations to proceed and then sync
+        this.debouncedContentSync();
+      }
     },
 
     /**
-     * Prevent default contenteditable behavior and intercept edits
+     * Detect the type of input operation and create appropriate markdown operation
+     */
+    detectInputOperation(event) {
+      const inputType = event.inputType;
+      const data = event.data;
+      
+      switch (inputType) {
+        case 'insertText':
+          return this.handleTextInsertion(data);
+        case 'insertCompositionText':
+          return this.handleTextInsertion(data);
+        case 'deleteContentBackward':
+          return this.handleDeletion('backward');
+        case 'deleteContentForward':
+          return this.handleDeletion('forward');
+        case 'deleteWordBackward':
+          return this.handleDeletion('wordBackward');
+        case 'deleteWordForward':
+          return this.handleDeletion('wordForward');
+        case 'deleteByCut':
+          return this.handleDeletion('cut');
+        case 'insertParagraph':
+        case 'insertLineBreak':
+          return this.handleEnterInsertion();
+        case 'insertFromPaste':
+          // Paste is handled separately in handlePaste
+          return null;
+        default:
+          // Let other operations proceed and sync afterwards
+          return null;
+      }
+    },
+
+    /**
+     * Handle text insertion
+     */
+    handleTextInsertion(text) {
+      if (!text) return null;
+      
+      const position = this.getCurrentMarkdownPosition();
+      return this.editHandler.handleTextInput(this.modelValue, position, text);
+    },
+
+    /**
+     * Handle deletion operations
+     */
+    handleDeletion(type) {
+      const position = this.getCurrentMarkdownPosition();
+      const selection = window.getSelection();
+      
+      if (selection.rangeCount === 0) return null;
+      
+      const range = selection.getRangeAt(0);
+      
+      if (!range.collapsed) {
+        // Delete selected content
+        const startPos = this.cursorManager.htmlToMarkdownOffset(
+          this.$refs.editor.textContent || '',
+          this.modelValue,
+          this.cursorManager.getOffsetInElement(this.$refs.editor, range.startContainer, range.startOffset)
+        );
+        const endPos = this.cursorManager.htmlToMarkdownOffset(
+          this.$refs.editor.textContent || '',
+          this.modelValue,
+          this.cursorManager.getOffsetInElement(this.$refs.editor, range.endContainer, range.endOffset)
+        );
+        
+        return this.editHandler.handleTextDeletion(this.modelValue, startPos, endPos);
+      } else {
+        // Handle single character or word deletion
+        return this.editHandler.handleCharacterDeletion(this.modelValue, position, type);
+      }
+    },
+
+    /**
+     * Handle Enter key insertion
+     */
+    handleEnterInsertion() {
+      const position = this.getCurrentMarkdownPosition();
+      return this.editHandler.handleNewlineInsertion(this.modelValue, position);
+    },
+
+    /**
+     * Sync content after allowing default behavior
+     */
+    syncContentFromHTML() {
+      if (this.isUpdating) return;
+      
+      const htmlContent = this.$refs.editor.innerHTML;
+      const textContent = this.$refs.editor.textContent || '';
+      
+      // This is a simplified sync - in a full implementation, 
+      // we'd parse the HTML structure and convert it back to proper markdown
+      if (textContent !== this.modelValue) {
+        this.isUpdating = true;
+        this.$emit('update:modelValue', textContent);
+        
+        this.$nextTick(() => {
+          this.isUpdating = false;
+        });
+      }
+    },
+
+    /**
+     * Prevent default contenteditable behavior for specific operations
      */
     preventDefaultContentEditing(event) {
-      // We want to prevent default HTML editing and convert to markdown ops
-      // For now, allow limited editing to test the concept
+      const inputType = event.inputType;
       
       // Prevent HTML formatting commands
-      if (event.inputType && event.inputType.startsWith('format')) {
+      if (inputType && inputType.startsWith('format')) {
+        event.preventDefault();
+        return false;
+      }
+
+      // Prevent direct HTML manipulation
+      if (inputType && (
+        inputType.includes('insertHTML') ||
+        inputType.includes('insertNode') ||
+        inputType.includes('insertLink')
+      )) {
         event.preventDefault();
         return false;
       }
@@ -291,6 +410,27 @@ export default {
     },
 
     /**
+     * Sync content from HTML back to markdown (fallback method)
+     */
+    syncContentFromHTML() {
+      if (this.isUpdating) return;
+      
+      const htmlContent = this.$refs.editor.innerHTML;
+      const textContent = this.$refs.editor.textContent || '';
+      
+      // This is a simplified sync - in a full implementation, 
+      // we'd parse the HTML structure and convert it back to proper markdown
+      if (textContent !== this.modelValue) {
+        this.isUpdating = true;
+        this.$emit('update:modelValue', textContent);
+        
+        this.$nextTick(() => {
+          this.isUpdating = false;
+        });
+      }
+    },
+
+    /**
      * Execute a markdown operation and update content
      */
     executeMarkdownOperation(operation) {
@@ -301,18 +441,30 @@ export default {
       // Save current position
       this.markdownPosition = this.getCurrentMarkdownPosition();
       
-      // Execute operation
-      const result = operation();
-      
-      if (result && result.content !== undefined) {
-        // Update markdown content
-        this.$emit('update:modelValue', result.content);
+      try {
+        // Execute operation
+        const result = operation();
         
-        // Update cursor position for restoration
-        if (result.cursorPosition !== undefined) {
-          this.markdownPosition = result.cursorPosition;
+        if (result && result.content !== undefined) {
+          // Update markdown content
+          this.$emit('update:modelValue', result.content);
+          
+          // Update cursor position for restoration
+          if (result.cursorPosition !== undefined) {
+            this.markdownPosition = result.cursorPosition;
+          }
+          
+          // Re-render and restore cursor position
+          this.$nextTick(() => {
+            this.restoreCursorAfterUpdate();
+            this.updateStyleStates();
+            this.isUpdating = false;
+          });
+        } else {
+          this.isUpdating = false;
         }
-      } else {
+      } catch (error) {
+        console.error('Error executing markdown operation:', error);
         this.isUpdating = false;
       }
     },
