@@ -31,8 +31,8 @@ export default {
       
       const html = this.renderer(this.markdown);
       
-      // Ensure empty content has editable structure
-      if (!html.trim()) {
+      // Ensure html is a string and handle empty content
+      if (!html || typeof html !== 'string' || !html.trim()) {
         return '<p><br></p>';
       }
       

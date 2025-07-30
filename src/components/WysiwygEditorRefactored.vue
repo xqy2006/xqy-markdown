@@ -11,17 +11,11 @@
     @mouseup="handleSelectionChange"
     @keyup="handleSelectionChange"
     style="min-height: 250px; padding: 15px; border: 1px solid #d1d9e0; border-radius: 6px; outline: none;"
-  >
-    <MarkdownRenderer 
-      :markdown="modelValue"
-      :renderer="getMarkdownRenderer"
-      @rendered="handleRendered"
-    />
-  </div>
+    v-html="renderedContent"
+  ></div>
 </template>
 
 <script>
-import MarkdownRenderer from './MarkdownRenderer.vue';
 import { CursorManager } from './CursorManager.js';
 import { EditHandler } from './EditHandler.js';
 import { StyleManager } from './StyleManager.js';
@@ -29,9 +23,6 @@ import { debounce } from 'lodash-es';
 
 export default {
   name: 'WysiwygEditorRefactored',
-  components: {
-    MarkdownRenderer
-  },
   props: {
     modelValue: {
       type: String,
@@ -53,6 +44,34 @@ export default {
       markdownPosition: 0, // Current cursor position in markdown
       debouncedStyleUpdate: null
     };
+  },
+  computed: {
+    renderedContent() {
+      if (!this.modelValue || !this.getMarkdownRenderer) {
+        return '<p><br></p>';
+      }
+      
+      const html = this.getMarkdownRenderer()(this.modelValue);
+      
+      // Ensure html is a string and handle empty content
+      if (!html || typeof html !== 'string' || !html.trim()) {
+        return '<p><br></p>';
+      }
+      
+      return html;
+    }
+  },
+  watch: {
+    modelValue: {
+      handler(newValue, oldValue) {
+        if (this.isUpdating) return;
+        
+        // Content changed externally, update the editor
+        this.$nextTick(() => {
+          this.restoreCursorAfterUpdate();
+        });
+      }
+    }
   },
   created() {
     // Initialize edit handler with cursor manager
@@ -96,19 +115,6 @@ export default {
       document.removeEventListener('selectionchange', this.handleGlobalSelectionChange);
       if (this.debouncedStyleUpdate) {
         this.debouncedStyleUpdate.cancel();
-      }
-    },
-
-    /**
-     * Handle when markdown is rendered
-     */
-    handleRendered(renderedElement) {
-      if (this.isUpdating) {
-        // Restore cursor position after re-rendering
-        this.$nextTick(() => {
-          this.restoreCursorAfterUpdate();
-          this.isUpdating = false;
-        });
       }
     },
 
