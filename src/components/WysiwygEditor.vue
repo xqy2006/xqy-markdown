@@ -4,48 +4,55 @@
     <div class="wysiwyg-toolbar vditor-toolbar">
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatText('bold')" 
-                aria-label="粗体">
+                aria-label="粗体 (Ctrl+B)">
           <Bold :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatText('italic')" 
-                aria-label="斜体">
+                aria-label="斜体 (Ctrl+I)">
           <Italic :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatHeading(1)" 
-                aria-label="标题1">
+                aria-label="标题1 (Ctrl+1)">
           <Heading :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatHeading(2)" 
-                aria-label="标题2">
+                aria-label="标题2 (Ctrl+2)">
           <Heading :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatText('underline')" 
-                aria-label="下划线">
+                aria-label="下划线 (Ctrl+U)">
           <Underline :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="formatText('strikethrough')" 
-                aria-label="删除线">
+                aria-label="删除线 (Ctrl+D)">
           <Strikethrough :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="insertList('ul')" 
                 aria-label="无序列表">
           <List :size="16" />
@@ -53,6 +60,7 @@
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="insertList('ol')" 
                 aria-label="有序列表">
           <ListOrdered :size="16" />
@@ -60,13 +68,15 @@
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="insertLink()" 
-                aria-label="链接">
+                aria-label="链接 (Ctrl+K)">
           <Link :size="16" />
         </button>
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="insertImage()" 
                 aria-label="图片">
           <Image :size="16" />
@@ -74,6 +84,7 @@
       </div>
       <div class="vditor-toolbar__item">
         <button class="vditor-tooltipped vditor-tooltipped--n" 
+                @mousedown="handleToolbarMouseDown"
                 @click="insertCodeBlock()" 
                 aria-label="代码块">
           <Code :size="16" />
@@ -126,7 +137,8 @@ export default {
       isConverting: false,
       debounceTimer: null,
       composingLock: false,
-      preventInput: false
+      preventInput: false,
+      savedSelection: null // Store selection when focus is lost
     }
   },
   watch: {
@@ -469,19 +481,251 @@ export default {
       return result.trim()
     },
 
+    // Handle toolbar button mousedown to prevent focus loss
+    handleToolbarMouseDown(event) {
+      // Prevent the button from stealing focus from the editor
+      event.preventDefault()
+      // Save current selection
+      this.saveCurrentSelection()
+    },
+
+    // Save current editor selection
+    saveCurrentSelection() {
+      const selection = window.getSelection()
+      if (selection.rangeCount > 0 && this.$refs.editorContent && this.$refs.editorContent.contains(selection.anchorNode)) {
+        this.savedSelection = {
+          startContainer: selection.anchorNode,
+          startOffset: selection.anchorOffset,
+          endContainer: selection.focusNode,
+          endOffset: selection.focusOffset,
+          collapsed: selection.isCollapsed
+        }
+      }
+    },
+
+    // Restore saved selection
+    restoreSavedSelection() {
+      if (this.savedSelection && this.$refs.editorContent) {
+        try {
+          const selection = window.getSelection()
+          const range = document.createRange()
+          
+          range.setStart(this.savedSelection.startContainer, this.savedSelection.startOffset)
+          range.setEnd(this.savedSelection.endContainer, this.savedSelection.endOffset)
+          
+          selection.removeAllRanges()
+          selection.addRange(range)
+          
+          // Ensure editor has focus
+          this.$refs.editorContent.focus()
+        } catch (e) {
+          // If selection restoration fails, just focus the editor
+          this.$refs.editorContent.focus()
+        }
+      }
+    },
+
     // Handle input events (debounced conversion) - vditor inspired
     handleInput(event) {
       if (this.composingLock || this.preventInput) {
         return
       }
       
+      // Process real-time markdown conversion first
+      this.processMarkdownInput(event)
+      
       // Save cursor position before processing
       this.saveCursorPosition()
       
       // Clean up any wbr elements from previous operations
       this.cleanupWbrElements()
-      
+
       this.debouncedConvertToMarkdown()
+    },
+
+    // Process markdown input for real-time conversion
+    processMarkdownInput(event) {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      if (!range.collapsed) return // Only process when no selection
+      
+      const textNode = range.startContainer
+      if (textNode.nodeType !== Node.TEXT_NODE) return
+      
+      const text = textNode.textContent
+      const offset = range.startOffset
+      
+      // Get the text before cursor
+      const beforeCursor = text.substring(0, offset)
+      const afterCursor = text.substring(offset)
+      
+      // Check for markdown patterns
+      this.convertMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
+    },
+
+    // Convert markdown patterns in real-time
+    convertMarkdownPatterns(textNode, beforeCursor, afterCursor, range) {
+      const patterns = [
+        // Bold: **text** or __text__
+        {
+          regex: /\*\*([^*]+)\*\*$/,
+          replacement: (match, content) => this.createInlineElement('strong', content),
+          removeLength: match => match[0].length
+        },
+        {
+          regex: /__([^_]+)__$/,
+          replacement: (match, content) => this.createInlineElement('strong', content),
+          removeLength: match => match[0].length
+        },
+        // Italic: *text* or _text_ (but not when part of bold)
+        {
+          regex: /(?:^|[^*])\*([^*]+)\*$/,
+          replacement: (match, content) => this.createInlineElement('em', content),
+          removeLength: match => match[0].includes('*' + match[1] + '*') ? match[1].length + 2 : match[0].length
+        },
+        {
+          regex: /(?:^|[^_])_([^_]+)_$/,
+          replacement: (match, content) => this.createInlineElement('em', content),
+          removeLength: match => match[0].includes('_' + match[1] + '_') ? match[1].length + 2 : match[0].length
+        },
+        // Inline code: `text`
+        {
+          regex: /`([^`]+)`$/,
+          replacement: (match, content) => this.createInlineElement('code', content),
+          removeLength: match => match[0].length
+        },
+        // Strikethrough: ~~text~~
+        {
+          regex: /~~([^~]+)~~$/,
+          replacement: (match, content) => this.createInlineElement('s', content),
+          removeLength: match => match[0].length
+        }
+      ]
+      
+      for (const pattern of patterns) {
+        const match = beforeCursor.match(pattern.regex)
+        if (match) {
+          // Create the replacement element
+          const element = pattern.replacement(match, match[1])
+          
+          // Calculate positions
+          const removeLength = pattern.removeLength(match)
+          const startPos = beforeCursor.length - removeLength
+          
+          // Update text node content
+          const newTextBefore = beforeCursor.substring(0, startPos)
+          const newTextAfter = afterCursor
+          
+          // Create new text nodes if needed
+          const newTextContent = newTextBefore + newTextAfter
+          
+          // Replace content
+          if (newTextContent.trim()) {
+            textNode.textContent = newTextContent
+          } else {
+            // If no text remains, replace the text node with just the element
+            textNode.textContent = ''
+          }
+          
+          // Insert the formatted element
+          const newRange = document.createRange()
+          newRange.setStart(textNode, newTextBefore.length)
+          newRange.insertNode(element)
+          
+          // Position cursor after the element
+          newRange.setStartAfter(element)
+          newRange.collapse(true)
+          
+          const selection = window.getSelection()
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+          
+          break // Only process one pattern at a time
+        }
+      }
+      
+      // Check for block-level patterns at the beginning of paragraphs
+      this.convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
+    },
+
+    // Convert block-level markdown patterns
+    convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range) {
+      const blockElement = this.getClosestBlockElement(textNode)
+      if (!blockElement || blockElement.tagName.toLowerCase() !== 'p') return
+      
+      const fullText = blockElement.textContent
+      
+      // Heading patterns: # text, ## text, etc.
+      const headingMatch = fullText.match(/^(#{1,6})\s+(.*)$/)
+      if (headingMatch && beforeCursor.includes('#')) {
+        const level = headingMatch[1].length
+        const content = headingMatch[2] || `标题 ${level}`
+        
+        // Create heading element
+        const heading = document.createElement(`h${level}`)
+        heading.textContent = content
+        
+        // Replace paragraph with heading
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(heading, blockElement)
+          
+          // Position cursor at end of heading
+          const newRange = document.createRange()
+          newRange.selectNodeContents(heading)
+          newRange.collapse(false)
+          
+          const selection = window.getSelection()
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+        }
+        return
+      }
+      
+      // List patterns: - text, * text, + text
+      const unorderedListMatch = fullText.match(/^[-*+]\s+(.*)$/)
+      if (unorderedListMatch && (beforeCursor.includes('-') || beforeCursor.includes('*') || beforeCursor.includes('+'))) {
+        const content = unorderedListMatch[1] || '列表项'
+        this.convertParagraphToList(blockElement, 'ul', content)
+        return
+      }
+      
+      // Ordered list patterns: 1. text, 2. text, etc.
+      const orderedListMatch = fullText.match(/^(\d+)\.\s+(.*)$/)
+      if (orderedListMatch && beforeCursor.includes('.')) {
+        const content = orderedListMatch[2] || '列表项'
+        this.convertParagraphToList(blockElement, 'ol', content)
+        return
+      }
+    },
+
+    // Create inline element with content
+    createInlineElement(tagName, content) {
+      const element = document.createElement(tagName)
+      element.textContent = content
+      return element
+    },
+
+    // Convert paragraph to list item
+    convertParagraphToList(paragraph, listType, content) {
+      const list = document.createElement(listType)
+      const listItem = document.createElement('li')
+      listItem.textContent = content
+      list.appendChild(listItem)
+      
+      if (paragraph.parentNode) {
+        paragraph.parentNode.replaceChild(list, paragraph)
+        
+        // Position cursor at end of list item
+        const newRange = document.createRange()
+        newRange.selectNodeContents(listItem)
+        newRange.collapse(false)
+        
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
     },
 
     // Handle composition start (IME input)
@@ -641,6 +885,9 @@ export default {
 
     // Insert inline code
     insertInlineCode() {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
@@ -906,12 +1153,23 @@ export default {
 
     // Handle focus events
     handleFocus() {
-      // Add any focus-specific logic here
+      // Clear any saved selection when editor is focused
+      this.savedSelection = null
     },
 
     // Handle blur events
     handleBlur() {
-      // Add any blur-specific logic here
+      // Save selection when losing focus (but not if it's due to toolbar interaction)
+      setTimeout(() => {
+        if (document.activeElement && !this.isToolbarElement(document.activeElement)) {
+          this.saveCurrentSelection()
+        }
+      }, 50)
+    },
+
+    // Check if element is part of toolbar
+    isToolbarElement(element) {
+      return element.closest('.wysiwyg-toolbar') !== null
     },
 
     // Debounced conversion to prevent too frequent updates
@@ -940,6 +1198,9 @@ export default {
 
     // Format text (bold, italic, etc.) - vditor inspired
     formatText(command) {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
@@ -993,6 +1254,9 @@ export default {
 
     // Format heading - vditor inspired
     formatHeading(level) {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
@@ -1051,6 +1315,9 @@ export default {
 
     // Insert list - vditor inspired
     insertList(type) {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
@@ -1094,6 +1361,9 @@ export default {
 
     // Insert link - vditor inspired
     insertLink() {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
@@ -1146,6 +1416,9 @@ export default {
 
     // Insert image - vditor inspired
     insertImage() {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const url = prompt('请输入图片地址:')
       if (!url) return
       
@@ -1174,6 +1447,9 @@ export default {
 
     // Insert code block - vditor inspired
     insertCodeBlock() {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
