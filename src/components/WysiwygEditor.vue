@@ -86,14 +86,17 @@
       ref="editorContent"
       class="vditor-wysiwyg"
       contenteditable="true"
+      spellcheck="false"
       @input="handleInput"
       @paste="handlePaste"
       @keydown="handleKeydown"
       @keyup="handleKeyup"
       @focus="handleFocus"
       @blur="handleBlur"
+      @compositionstart="handleCompositionStart"
+      @compositionend="handleCompositionEnd"
+      v-html="htmlContent"
     >
-      <div v-html="htmlContent" class="vditor-wysiwyg__block" data-block="0"></div>
     </div>
   </div>
 </template>
@@ -121,7 +124,9 @@ export default {
     return {
       htmlContent: '',
       isConverting: false,
-      debounceTimer: null
+      debounceTimer: null,
+      composingLock: false,
+      preventInput: false
     }
   },
   watch: {
@@ -151,37 +156,88 @@ export default {
 
     // Clean HTML for WYSIWYG editing (vditor-inspired)
     cleanHtmlForWysiwyg(html) {
+      if (!html) return '<p><br></p>'
+      
       const tempDiv = document.createElement('div')
       tempDiv.innerHTML = html
       
       // Process elements to make them suitable for contenteditable
-      const walker = document.createTreeWalker(
-        tempDiv,
-        NodeFilter.SHOW_ELEMENT,
-        null,
-        false
-      )
+      this.processElementsForWysiwyg(tempDiv)
       
-      let node
-      while (node = walker.nextNode()) {
-        // Add data attributes for better editing experience
-        if (node.tagName === 'H1' || node.tagName === 'H2' || node.tagName === 'H3') {
-          node.setAttribute('data-block', '0')
-        } else if (node.tagName === 'P') {
-          node.setAttribute('data-block', '0')
-          if (!node.textContent.trim()) {
-            node.innerHTML = '<br>'
-          }
-        } else if (node.tagName === 'UL' || node.tagName === 'OL') {
-          node.setAttribute('data-block', '0')
-        } else if (node.tagName === 'LI') {
-          node.setAttribute('data-block', '0')
-        } else if (node.tagName === 'PRE') {
-          node.setAttribute('data-block', '0')
-        }
+      // Ensure there's always a paragraph if content is empty or only whitespace
+      if (!tempDiv.innerHTML.trim() || tempDiv.innerHTML === '<br>') {
+        return '<p><br></p>'
       }
       
       return tempDiv.innerHTML
+    },
+
+    // Process elements recursively for WYSIWYG editing
+    processElementsForWysiwyg(container) {
+      const elements = Array.from(container.children)
+      
+      for (const element of elements) {
+        const tagName = element.tagName.toLowerCase()
+        
+        switch (tagName) {
+          case 'p':
+            // Ensure paragraphs have content or a br
+            if (!element.textContent.trim() && !element.querySelector('br, img')) {
+              element.innerHTML = '<br>'
+            }
+            break
+            
+          case 'h1':
+          case 'h2':
+          case 'h3':
+          case 'h4':
+          case 'h5':
+          case 'h6':
+            // Ensure headings have some content
+            if (!element.textContent.trim()) {
+              element.textContent = `标题 ${tagName.charAt(1)}`
+            }
+            break
+            
+          case 'pre':
+            // Handle code blocks
+            const code = element.querySelector('code')
+            if (code) {
+              // Preserve code formatting
+              code.style.whiteSpace = 'pre-wrap'
+            }
+            break
+            
+          case 'ul':
+          case 'ol':
+            // Ensure lists have list items
+            if (!element.querySelector('li')) {
+              const li = document.createElement('li')
+              li.innerHTML = '<br>'
+              element.appendChild(li)
+            }
+            break
+            
+          case 'li':
+            // Ensure list items have content
+            if (!element.textContent.trim() && !element.querySelector('br, img')) {
+              element.innerHTML = '<br>'
+            }
+            break
+            
+          case 'blockquote':
+            // Ensure blockquotes have content
+            if (!element.textContent.trim()) {
+              element.innerHTML = '<p><br></p>'
+            }
+            break
+        }
+        
+        // Recursively process children
+        if (element.children.length > 0) {
+          this.processElementsForWysiwyg(element)
+        }
+      }
     },
 
     // Basic Markdown to HTML conversion (fallback)
@@ -206,107 +262,175 @@ export default {
       const content = this.$refs.editorContent
       if (!content) return ''
       
-      let markdown = ''
-      const walker = document.createTreeWalker(
-        content,
-        NodeFilter.SHOW_ELEMENT,
-        null,
-        false
-      )
+      // Clean up the content before conversion
+      this.cleanupWbrElements()
       
-      let node
-      while (node = walker.nextNode()) {
-        if (node.getAttribute('data-block') === '0') {
-          const blockMarkdown = this.elementToMarkdown(node)
-          if (blockMarkdown) {
-            markdown += blockMarkdown + '\n\n'
-          }
+      let markdown = ''
+      const children = Array.from(content.children)
+      
+      for (const child of children) {
+        if (child.tagName === 'WBR') continue
+        
+        const blockMarkdown = this.elementToMarkdown(child)
+        if (blockMarkdown) {
+          markdown += blockMarkdown + '\n\n'
         }
+      }
+      
+      // Handle case where content has no block elements (direct text content)
+      if (children.length === 0 && content.textContent.trim()) {
+        markdown = content.textContent.trim()
       }
       
       return markdown.trim()
     },
 
-    // Convert individual element to Markdown
+    // Convert individual element to Markdown (enhanced)
     elementToMarkdown(element) {
+      if (!element || element.tagName === 'WBR') return ''
+      
       const tagName = element.tagName.toLowerCase()
-      const textContent = element.textContent || ''
       
       switch (tagName) {
         case 'h1':
-          return `# ${textContent}`
         case 'h2':
-          return `## ${textContent}`
         case 'h3':
-          return `### ${textContent}`
         case 'h4':
-          return `#### ${textContent}`
         case 'h5':
-          return `##### ${textContent}`
         case 'h6':
-          return `###### ${textContent}`
+          const level = parseInt(tagName.charAt(1))
+          return '#'.repeat(level) + ' ' + this.processInlineMarkdown(element)
+          
         case 'p':
-          return this.processInlineMarkdown(element)
+          const content = this.processInlineMarkdown(element)
+          return content || ''
+          
         case 'ul':
           return this.processListMarkdown(element, false)
+          
         case 'ol':
           return this.processListMarkdown(element, true)
+          
         case 'pre':
           const code = element.querySelector('code')
-          const language = code ? (code.className.match(/language-(\w+)/) || [])[1] || '' : ''
-          return `\`\`\`${language}\n${textContent}\n\`\`\``
+          if (code) {
+            const language = this.extractLanguageFromClass(code.className)
+            const codeContent = code.textContent || ''
+            return `\`\`\`${language}\n${codeContent}\n\`\`\``
+          }
+          return `\`\`\`\n${element.textContent || ''}\n\`\`\``
+          
         case 'blockquote':
-          return `> ${textContent}`
+          const lines = this.processInlineMarkdown(element).split('\n')
+          return lines.map(line => `> ${line}`).join('\n')
+          
+        case 'hr':
+          return '---'
+          
+        case 'table':
+          return this.processTableMarkdown(element)
+          
         default:
+          // Handle inline elements and other content
           return this.processInlineMarkdown(element)
       }
     },
 
-    // Process inline formatting (bold, italic, etc.)
+    // Extract language from className (e.g., "language-javascript" -> "javascript")
+    extractLanguageFromClass(className) {
+      if (!className) return ''
+      const match = className.match(/(?:language|lang)-(\w+)/)
+      return match ? match[1] : ''
+    },
+
+    // Process table elements to Markdown
+    processTableMarkdown(table) {
+      const rows = Array.from(table.querySelectorAll('tr'))
+      if (rows.length === 0) return ''
+      
+      let markdown = ''
+      
+      // Process header row
+      const headerRow = rows[0]
+      const headerCells = Array.from(headerRow.querySelectorAll('th, td'))
+      const headers = headerCells.map(cell => this.processInlineMarkdown(cell))
+      markdown += '| ' + headers.join(' | ') + ' |\n'
+      
+      // Add separator row
+      const separators = headers.map(() => '---')
+      markdown += '| ' + separators.join(' | ') + ' |\n'
+      
+      // Process data rows
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]
+        const cells = Array.from(row.querySelectorAll('td, th'))
+        const cellContents = cells.map(cell => this.processInlineMarkdown(cell))
+        markdown += '| ' + cellContents.join(' | ') + ' |\n'
+      }
+      
+      return markdown.trim()
+    },
+
+    // Process inline formatting (bold, italic, etc.) - enhanced
     processInlineMarkdown(element) {
       let result = ''
-      const walker = document.createTreeWalker(
-        element,
-        NodeFilter.SHOW_ALL,
-        null,
-        false
-      )
       
-      let node
-      while (node = walker.nextNode()) {
+      const processNode = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
-          result += node.textContent
+          return node.textContent || ''
         } else if (node.nodeType === Node.ELEMENT_NODE) {
           const tagName = node.tagName.toLowerCase()
-          const text = node.textContent
           
           switch (tagName) {
             case 'strong':
             case 'b':
-              result += `**${text}**`
-              break
+              return `**${this.getTextContent(node)}**`
             case 'em':
             case 'i':
-              result += `*${text}*`
-              break
+              return `*${this.getTextContent(node)}*`
+            case 'u':
+              return `<u>${this.getTextContent(node)}</u>`
+            case 's':
+            case 'strike':
+            case 'del':
+              return `~~${this.getTextContent(node)}~~`
             case 'code':
-              result += `\`${text}\``
-              break
+              return `\`${this.getTextContent(node)}\``
             case 'a':
               const href = node.getAttribute('href') || ''
-              result += `[${text}](${href})`
-              break
+              const text = this.getTextContent(node)
+              return `[${text}](${href})`
             case 'img':
               const src = node.getAttribute('src') || ''
               const alt = node.getAttribute('alt') || ''
-              result += `![${alt}](${src})`
-              break
+              return `![${alt}](${src})`
+            case 'br':
+              return '\n'
+            case 'wbr':
+              return ''
             default:
-              result += text
+              // For other elements, process their children
+              return Array.from(node.childNodes).map(child => processNode(child)).join('')
           }
         }
+        return ''
       }
       
+      return Array.from(element.childNodes).map(child => processNode(child)).join('')
+    },
+
+    // Get text content recursively
+    getTextContent(element) {
+      if (!element) return ''
+      
+      if (element.nodeType === Node.TEXT_NODE) {
+        return element.textContent || ''
+      }
+      
+      let result = ''
+      for (const child of element.childNodes) {
+        result += this.getTextContent(child)
+      }
       return result
     },
 
@@ -324,9 +448,74 @@ export default {
       return result.trim()
     },
 
-    // Handle input events (debounced conversion)
-    handleInput() {
+    // Handle input events (debounced conversion) - vditor inspired
+    handleInput(event) {
+      if (this.composingLock || this.preventInput) {
+        return
+      }
+      
+      // Save cursor position before processing
+      this.saveCursorPosition()
+      
+      // Clean up any wbr elements from previous operations
+      this.cleanupWbrElements()
+      
       this.debouncedConvertToMarkdown()
+    },
+
+    // Handle composition start (IME input)
+    handleCompositionStart() {
+      this.composingLock = true
+    },
+
+    // Handle composition end (IME input)
+    handleCompositionEnd() {
+      this.composingLock = false
+      this.handleInput()
+    },
+
+    // Save cursor position using wbr element (vditor pattern)
+    saveCursorPosition() {
+      const selection = window.getSelection()
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0)
+        
+        // Remove existing wbr elements
+        this.cleanupWbrElements()
+        
+        // Insert wbr element at cursor position
+        const wbr = document.createElement('wbr')
+        range.insertNode(wbr)
+      }
+    },
+
+    // Clean up wbr elements
+    cleanupWbrElements() {
+      const content = this.$refs.editorContent
+      if (content) {
+        const wbrElements = content.querySelectorAll('wbr')
+        wbrElements.forEach(wbr => wbr.remove())
+      }
+    },
+
+    // Restore cursor position from wbr element (vditor pattern)
+    restoreCursorPosition() {
+      const content = this.$refs.editorContent
+      if (!content) return
+      
+      const wbr = content.querySelector('wbr')
+      if (wbr) {
+        const selection = window.getSelection()
+        const range = document.createRange()
+        
+        range.setStartAfter(wbr)
+        range.collapse(true)
+        
+        selection.removeAllRanges()
+        selection.addRange(range)
+        
+        wbr.remove()
+      }
     },
 
     // Handle paste events
@@ -374,7 +563,7 @@ export default {
       }
     },
 
-    // Handle keydown events
+    // Handle keydown events - enhanced with more shortcuts
     handleKeydown(event) {
       // Handle keyboard shortcuts
       if (event.ctrlKey || event.metaKey) {
@@ -391,40 +580,283 @@ export default {
             event.preventDefault()
             this.formatText('underline')
             break
+          case 'd':
+            event.preventDefault()
+            this.formatText('strikethrough')
+            break
+          case 'k':
+            event.preventDefault()
+            this.insertLink()
+            break
+          case '1':
+          case '2':
+          case '3':
+          case '4':
+          case '5':
+          case '6':
+            event.preventDefault()
+            this.formatHeading(parseInt(event.key))
+            break
+          case '`':
+            event.preventDefault()
+            this.insertInlineCode()
+            break
         }
       }
       
-      // Handle Enter key for lists
-      if (event.key === 'Enter') {
-        this.handleEnterKey(event)
+      // Handle special keys
+      switch (event.key) {
+        case 'Enter':
+          this.handleEnterKey(event)
+          break
+        case 'Backspace':
+          this.handleBackspaceKey(event)
+          break
+        case 'Tab':
+          this.handleTabKey(event)
+          break
       }
     },
 
-    // Handle Enter key for better list behavior
-    handleEnterKey(event) {
+    // Insert inline code
+    insertInlineCode() {
+      const selection = window.getSelection()
+      const selectedText = selection.toString()
+      
+      if (selectedText) {
+        const code = document.createElement('code')
+        code.textContent = selectedText
+        
+        const range = selection.getRangeAt(0)
+        range.deleteContents()
+        range.insertNode(code)
+        
+        // Set cursor after code element
+        const newRange = document.createRange()
+        newRange.setStartAfter(code)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+        
+        this.debouncedConvertToMarkdown()
+      }
+    },
+
+    // Handle backspace key for better behavior
+    handleBackspaceKey(event) {
       const selection = window.getSelection()
       if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0)
-        const listItem = range.startContainer.closest ? range.startContainer.closest('li') : null
         
-        if (listItem) {
-          event.preventDefault()
+        // Check if we're at the beginning of a block element
+        if (range.collapsed && range.startOffset === 0) {
+          const blockElement = this.getClosestBlockElement(range.startContainer)
           
-          // Create new list item
-          const newListItem = document.createElement('li')
-          newListItem.setAttribute('data-block', '0')
-          newListItem.innerHTML = '<br>'
-          
-          listItem.parentNode.insertBefore(newListItem, listItem.nextSibling)
-          
-          // Move cursor to new list item
-          const newRange = document.createRange()
-          newRange.setStart(newListItem, 0)
-          newRange.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(newRange)
+          if (blockElement && blockElement.tagName.match(/^H[1-6]$/)) {
+            // Convert heading to paragraph
+            event.preventDefault()
+            const p = document.createElement('p')
+            p.innerHTML = blockElement.innerHTML
+            blockElement.parentNode.replaceChild(p, blockElement)
+            
+            // Set cursor at beginning of new paragraph
+            const newRange = document.createRange()
+            newRange.setStart(p, 0)
+            newRange.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(newRange)
+            
+            this.debouncedConvertToMarkdown()
+          }
         }
       }
+    },
+
+    // Handle tab key for indentation
+    handleTabKey(event) {
+      event.preventDefault()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0)
+        const listItem = this.getClosestElement(range.startContainer, 'LI')
+        
+        if (listItem) {
+          // Handle list indentation
+          if (event.shiftKey) {
+            this.outdentListItem(listItem)
+          } else {
+            this.indentListItem(listItem)
+          }
+        } else {
+          // Insert tab character
+          const tabText = document.createTextNode('\t')
+          range.insertNode(tabText)
+          range.setStartAfter(tabText)
+          range.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(range)
+        }
+        
+        this.debouncedConvertToMarkdown()
+      }
+    },
+
+    // Get closest block element
+    getClosestBlockElement(node) {
+      const blockElements = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'BLOCKQUOTE', 'PRE', 'LI']
+      
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        if (blockElements.includes(node.tagName)) {
+          return node
+        }
+        node = node.parentNode
+      }
+      
+      return null
+    },
+
+    // Get closest element of specific tag
+    getClosestElement(node, tagName) {
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        if (node.tagName === tagName) {
+          return node
+        }
+        node = node.parentNode
+      }
+      return null
+    },
+
+    // Indent list item
+    indentListItem(listItem) {
+      const parentList = listItem.parentNode
+      const prevItem = listItem.previousElementSibling
+      
+      if (prevItem) {
+        let subList = prevItem.querySelector('ul, ol')
+        if (!subList) {
+          subList = document.createElement(parentList.tagName.toLowerCase())
+          prevItem.appendChild(subList)
+        }
+        subList.appendChild(listItem)
+      }
+    },
+
+    // Outdent list item
+    outdentListItem(listItem) {
+      const parentList = listItem.parentNode
+      const grandParentList = parentList.parentNode
+      
+      if (grandParentList && grandParentList.tagName.match(/^(UL|OL)$/i)) {
+        const parentListItem = parentList.parentNode
+        grandParentList.insertBefore(listItem, parentListItem.nextSibling)
+        
+        // Remove empty sublists
+        if (parentList.children.length === 0) {
+          parentList.remove()
+        }
+      }
+    },
+
+    // Handle Enter key for better list and block behavior - vditor inspired
+    handleEnterKey(event) {
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const listItem = this.getClosestElement(range.startContainer, 'LI')
+      
+      if (listItem) {
+        // Handle list items
+        event.preventDefault()
+        
+        if (listItem.textContent.trim() === '') {
+          // Empty list item - exit list
+          this.exitList(listItem)
+        } else {
+          // Create new list item
+          this.createNewListItem(listItem, range)
+        }
+      } else {
+        // Handle other block elements
+        const blockElement = this.getClosestBlockElement(range.startContainer)
+        
+        if (blockElement && blockElement.tagName.match(/^H[1-6]$/)) {
+          // After heading, create paragraph
+          event.preventDefault()
+          this.createParagraphAfterHeading(blockElement, range)
+        }
+      }
+    },
+
+    // Exit from list
+    exitList(listItem) {
+      const list = listItem.parentNode
+      const newP = document.createElement('p')
+      newP.innerHTML = '<br>'
+      
+      list.parentNode.insertBefore(newP, list.nextSibling)
+      
+      // Remove empty list item
+      listItem.remove()
+      
+      // Remove empty list
+      if (list.children.length === 0) {
+        list.remove()
+      }
+      
+      // Set cursor in new paragraph
+      const selection = window.getSelection()
+      const range = document.createRange()
+      range.setStart(newP, 0)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Create new list item
+    createNewListItem(listItem, range) {
+      const newListItem = document.createElement('li')
+      newListItem.innerHTML = '<br>'
+      
+      // Split content at cursor position
+      if (range.startOffset < range.startContainer.textContent.length) {
+        const remainingContent = range.extractContents()
+        newListItem.innerHTML = ''
+        newListItem.appendChild(remainingContent)
+      }
+      
+      listItem.parentNode.insertBefore(newListItem, listItem.nextSibling)
+      
+      // Set cursor in new list item
+      const selection = window.getSelection()
+      const newRange = document.createRange()
+      newRange.setStart(newListItem, 0)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Create paragraph after heading
+    createParagraphAfterHeading(heading, range) {
+      const newP = document.createElement('p')
+      newP.innerHTML = '<br>'
+      
+      heading.parentNode.insertBefore(newP, heading.nextSibling)
+      
+      // Set cursor in new paragraph
+      const selection = window.getSelection()
+      const newRange = document.createRange()
+      newRange.setStart(newP, 0)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
     },
 
     // Handle keyup events
@@ -453,15 +885,17 @@ export default {
       }, 300)
     },
 
-    // Convert content and emit to parent
+    // Convert content and emit to parent - enhanced
     convertAndEmit() {
       this.isConverting = true
       const markdown = this.convertToMarkdown()
       this.$emit('update:modelValue', markdown)
       
+      // Restore cursor position after a short delay
       setTimeout(() => {
+        this.restoreCursorPosition()
         this.isConverting = false
-      }, 100)
+      }, 50)
     },
 
     // Format text (bold, italic, etc.) - vditor inspired
