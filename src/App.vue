@@ -27,6 +27,11 @@
     <td><button style="margin-inline-start: 15px;" class="btn btn-danger btn-sm" @click="clearAllContent()" title="清除文件名和内容">
             清除内容
         </button></td>
+    
+    <!-- 新增: 编辑模式切换按钮 -->
+    <td><button style="margin-inline-start: 15px;" :class="['btn', 'btn-sm', editingMode === 'wysiwyg' ? 'btn-primary' : 'btn-outline']" @click="toggleEditingMode()" title="切换编辑模式">
+            {{ editingMode === 'wysiwyg' ? '所见即所得' : '分屏模式' }}
+        </button></td>
 </div>
 <span class="Progress" v-if="pdfdown" style="margin-top: 10px;margin-inline-start: 15px;margin-inline-end: 15px;">
   <span class="Progress-item color-bg-success-emphasis" :style="`width:`+(count/sum*100)+`%;`"></span>
@@ -97,8 +102,23 @@
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
-        <div>
-            <textarea :disabled="mddown||htmldown||pdfdown||jpgdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
+        <!-- 分屏模式：显示传统textarea -->
+        <div v-if="editingMode === 'split'">
+            <textarea :disabled="mddown||htmldown||pdfdown||pngdown" style="margin-top: 5px;width: 100%;height: 250px;" class="form-control" v-model="mdtext" ref="input"></textarea>
+        </div>
+        
+        <!-- WYSIWYG模式：显示可编辑的HTML区域 -->
+        <div v-else-if="editingMode === 'wysiwyg'" class="wysiwyg-editor-container">
+            <div 
+                ref="wysiwygEditor"
+                class="wysiwyg-editor markdown-body"
+                contenteditable="true"
+                @input="onWysiwygInput"
+                @paste="onWysiwygPaste"
+                @keydown="onWysiwygKeydown"
+                style="margin-top: 5px; min-height: 250px; border: 1px solid #d0d7de; border-radius: 6px; padding: 16px; background: #ffffff;"
+                v-html="htmlContent"
+            ></div>
         </div>
     </div>
 </div>
@@ -106,8 +126,16 @@
     <div class="Box-header">
         <b>预览：</b>
     </div>
-    <div class="markdown-body Box-row" id="mdcontent" ref="md">
+    <!-- 只在分屏模式下显示预览区域 -->
+    <div v-if="editingMode === 'split'" class="markdown-body Box-row" id="mdcontent" ref="md">
         <div ref="exportContent" class="export-container" v-html="get_md(mdtext)">
+        </div>
+    </div>
+    <!-- WYSIWYG模式下隐藏预览，因为编辑器本身就是预览 -->
+    <div v-else class="Box-row" style="padding: 16px; color: #656d76; font-style: italic;">
+        WYSIWYG模式下编辑器即为预览，无需单独预览区域
+        <!-- 隐藏的导出容器，用于PDF和PNG导出 -->
+        <div ref="exportContent" class="export-container" v-html="get_md(mdtext)" style="display: none;">
         </div>
     </div>
 </div>
@@ -304,6 +332,120 @@ code {
 .btn-invisible:hover svg {
     color: var(--color-accent-emphasis, #0969da);
 }
+
+/* WYSIWYG编辑器样式 */
+.wysiwyg-editor-container {
+    position: relative;
+}
+
+.wysiwyg-editor {
+    outline: none;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+}
+
+.wysiwyg-editor:focus {
+    border-color: #0969da !important;
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.1);
+}
+
+/* WYSIWYG编辑器内的元素样式 */
+.wysiwyg-editor h1,
+.wysiwyg-editor h2,
+.wysiwyg-editor h3,
+.wysiwyg-editor h4,
+.wysiwyg-editor h5,
+.wysiwyg-editor h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.wysiwyg-editor h1 {
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 0.3em;
+}
+
+.wysiwyg-editor h2 {
+    border-bottom: 1px solid #d0d7de;
+    padding-bottom: 0.3em;
+}
+
+.wysiwyg-editor p {
+    margin-bottom: 16px;
+}
+
+.wysiwyg-editor code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    background-color: rgba(175, 184, 193, 0.2);
+    border-radius: 6px;
+}
+
+.wysiwyg-editor pre {
+    padding: 16px;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #f6f8fa;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.wysiwyg-editor blockquote {
+    padding: 0 1em;
+    color: #656d76;
+    border-left: 0.25em solid #d0d7de;
+    margin: 0 0 16px 0;
+}
+
+.wysiwyg-editor ul,
+.wysiwyg-editor ol {
+    padding-left: 2em;
+    margin-bottom: 16px;
+}
+
+.wysiwyg-editor li {
+    margin-bottom: 0.25em;
+}
+
+.wysiwyg-editor table {
+    border-collapse: collapse;
+    margin-bottom: 16px;
+}
+
+.wysiwyg-editor th,
+.wysiwyg-editor td {
+    padding: 6px 13px;
+    border: 1px solid #d0d7de;
+}
+
+.wysiwyg-editor th {
+    font-weight: 600;
+    background-color: #f6f8fa;
+}
+
+/* 编辑模式切换按钮样式 */
+.btn-outline {
+    background-color: #ffffff;
+    border: 1px solid #d0d7de;
+    color: #24292f;
+}
+
+.btn-outline:hover {
+    background-color: #f3f4f6;
+    border-color: #d0d7de;
+}
+
+/* 模式切换动画 */
+.wysiwyg-editor-container,
+#mytextarea > div {
+    transition: opacity 0.3s ease-in-out;
+}
 </style>
 
 <script>
@@ -319,6 +461,7 @@ import mk from 'markdown-it-texmath'
 import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
+import TurndownService from 'turndown'
 
 // Import Lucide Icons
 import { 
@@ -354,6 +497,10 @@ export default {
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
+            editingMode: 'split', // 新增：编辑模式 ('split' | 'wysiwyg')
+            htmlContent: '', // WYSIWYG模式下的HTML内容
+            isUpdatingFromMarkdown: false, // 防止循环更新的标志
+            wysiwygUpdateTimer: null, // WYSIWYG更新定时器
         }
     },
     created(){
@@ -363,6 +510,9 @@ export default {
     mounted() {
         this.loadFromStorage();
         this.setupAutoSave();
+        
+        // 初始化WYSIWYG内容
+        this.updateHtmlFromMarkdown();
         
         // 初始化完成后，开始监听变化
         this.$nextTick(() => {
@@ -377,6 +527,9 @@ export default {
         if (this.autoSaveTimer) {
             clearTimeout(this.autoSaveTimer);
         }
+        if (this.wysiwygUpdateTimer) {
+            clearTimeout(this.wysiwygUpdateTimer);
+        }
     },
 
     // 添加侦听器
@@ -387,6 +540,14 @@ export default {
                 // 只在非初始化状态下触发保存
                 if (!this.isInitializing) {
                     this.debouncedSave();
+                }
+                // 同步更新WYSIWYG内容
+                if (!this.isUpdatingFromMarkdown && this.editingMode === 'wysiwyg') {
+                    this.isUpdatingFromMarkdown = true;
+                    this.updateHtmlFromMarkdown();
+                    this.$nextTick(() => {
+                        this.isUpdatingFromMarkdown = false;
+                    });
                 }
             },
             deep: true
@@ -403,6 +564,314 @@ export default {
     },
 
     methods: {
+        // ===== WYSIWYG 相关方法 =====
+        
+        // 切换编辑模式
+        toggleEditingMode() {
+            const newMode = this.editingMode === 'split' ? 'wysiwyg' : 'split';
+            
+            if (newMode === 'wysiwyg') {
+                // 切换到WYSIWYG模式：从Markdown生成HTML
+                this.updateHtmlFromMarkdown();
+            } else {
+                // 切换到分屏模式：从HTML生成Markdown（如果在WYSIWYG模式下有修改）
+                if (this.editingMode === 'wysiwyg') {
+                    this.updateMarkdownFromHtml();
+                }
+            }
+            
+            this.editingMode = newMode;
+        },
+        
+        // 从Markdown更新HTML内容
+        updateHtmlFromMarkdown() {
+            this.htmlContent = this.get_md(this.mdtext);
+        },
+        
+        // 从HTML更新Markdown内容
+        updateMarkdownFromHtml() {
+            if (this.$refs.wysiwygEditor && !this.isUpdatingFromMarkdown) {
+                const turndownService = new TurndownService({
+                    headingStyle: 'atx',
+                    codeBlockStyle: 'fenced',
+                    bulletListMarker: '-',
+                    emDelimiter: '*',
+                    strongDelimiter: '**'
+                });
+                
+                // 配置turndown规则以更好地处理各种HTML元素
+                turndownService.addRule('strikethrough', {
+                    filter: ['del', 's'],
+                    replacement: content => `~~${content}~~`
+                });
+                
+                turndownService.addRule('highlight', {
+                    filter: 'mark',
+                    replacement: content => `<mark>${content}</mark>`
+                });
+                
+                turndownService.addRule('underline', {
+                    filter: 'u',  
+                    replacement: content => `<u>${content}</u>`
+                });
+                
+                turndownService.addRule('color', {
+                    filter: node => {
+                        return node.nodeName === 'FONT' && node.getAttribute('color');
+                    },
+                    replacement: (content, node) => {
+                        const color = node.getAttribute('color');
+                        return `<font color="${color}">${content}</font>`;
+                    }
+                });
+                
+                const htmlContent = this.$refs.wysiwygEditor.innerHTML;
+                const markdown = turndownService.turndown(htmlContent);
+                
+                // 避免循环更新
+                this.isUpdatingFromMarkdown = true;
+                this.mdtext = markdown;
+                this.$nextTick(() => {
+                    this.isUpdatingFromMarkdown = false;
+                });
+            }
+        },
+        
+        // WYSIWYG编辑器输入事件处理
+        onWysiwygInput(event) {
+            // 延迟处理，避免频繁转换
+            if (this.wysiwygUpdateTimer) {
+                clearTimeout(this.wysiwygUpdateTimer);
+            }
+            
+            this.wysiwygUpdateTimer = setTimeout(() => {
+                this.updateMarkdownFromHtml();
+            }, 500);
+        },
+        
+        // WYSIWYG编辑器粘贴事件处理
+        onWysiwygPaste(event) {
+            // 让浏览器处理粘贴，然后更新Markdown
+            setTimeout(() => {
+                this.updateMarkdownFromHtml();
+            }, 100);
+        },
+        
+        // WYSIWYG编辑器键盘事件处理
+        onWysiwygKeydown(event) {
+            // 处理一些特殊键盘快捷键
+            if (event.ctrlKey || event.metaKey) {
+                switch (event.key) {
+                    case 'b':
+                        event.preventDefault();
+                        this.execWysiwygCommand('bold');
+                        break;
+                    case 'i':
+                        event.preventDefault();
+                        this.execWysiwygCommand('italic');
+                        break;
+                    case 'u':
+                        event.preventDefault();
+                        this.execWysiwygCommand('underline');
+                        break;
+                }
+            }
+        },
+        
+        // 执行WYSIWYG命令
+        execWysiwygCommand(command, value = null) {
+            if (this.editingMode === 'wysiwyg' && this.$refs.wysiwygEditor) {
+                this.$refs.wysiwygEditor.focus();
+                document.execCommand(command, false, value);
+                // 命令执行后更新Markdown
+                setTimeout(() => {
+                    this.updateMarkdownFromHtml();
+                }, 100);
+            }
+        },
+        
+        // 获取当前选区
+        getWysiwygSelection() {
+            if (this.editingMode === 'wysiwyg' && this.$refs.wysiwygEditor) {
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    return selection.getRangeAt(0);
+                }
+            }
+            return null;
+        },
+        
+        // 在WYSIWYG编辑器中插入内容
+        insertWysiwygContent(content, isHtml = false) {
+            if (this.editingMode === 'wysiwyg' && this.$refs.wysiwygEditor) {
+                this.$refs.wysiwygEditor.focus();
+                
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    
+                    if (isHtml) {
+                        const fragment = range.createContextualFragment(content);
+                        range.insertNode(fragment);
+                    } else {
+                        const textNode = document.createTextNode(content);
+                        range.insertNode(textNode);
+                    }
+                    
+                    // 更新光标位置
+                    range.collapse(false);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+                
+                // 插入后更新Markdown
+                setTimeout(() => {
+                    this.updateMarkdownFromHtml();
+                }, 100);
+            }
+        },
+        
+        // 处理WYSIWYG模式下的格式化（如粗体、斜体等）
+        handleWysiwygFormatting(marker) {
+            if (this.editingMode !== 'wysiwyg') return;
+            
+            switch (marker) {
+                case '**':
+                    this.execWysiwygCommand('bold');
+                    break;
+                case '*':
+                    this.execWysiwygCommand('italic');
+                    break;
+                case '~~':
+                    this.execWysiwygCommand('strikeThrough');
+                    break;
+                case '`':
+                    // 简单的代码处理
+                    const selection = window.getSelection();
+                    if (selection.toString()) {
+                        this.insertWysiwygContent(`<code>${selection.toString()}</code>`, true);
+                    } else {
+                        this.insertWysiwygContent('`', false);
+                    }
+                    break;
+                default:
+                    this.insertWysiwygContent(marker, false);
+            }
+        },
+        
+        // 处理WYSIWYG模式下的包装格式（如链接、图片等）
+        handleWysiwygWrapping(prefix, suffix) {
+            if (this.editingMode !== 'wysiwyg') return;
+            
+            const selection = window.getSelection();
+            const selectedText = selection.toString();
+            
+            // 特殊处理某些格式
+            if (prefix === '![](') {
+                // 图片
+                const url = prompt('请输入图片URL:');
+                if (url) {
+                    const alt = selectedText || '图片';
+                    this.insertWysiwygContent(`<img src="${url}" alt="${alt}" />`, true);
+                }
+                return;
+            }
+            
+            if (prefix === '<u>' && suffix === '</u>') {
+                this.execWysiwygCommand('underline');
+                return;
+            }
+            
+            if (prefix === '<font color="red">') {
+                if (selectedText) {
+                    this.insertWysiwygContent(`<font color="red">${selectedText}</font>`, true);
+                } else {
+                    this.insertWysiwygContent('<font color="red">文字</font>', true);
+                }
+                return;
+            }
+            
+            if (prefix === '<mark>') {
+                if (selectedText) {
+                    this.insertWysiwygContent(`<mark>${selectedText}</mark>`, true);
+                } else {
+                    this.insertWysiwygContent('<mark>高亮文字</mark>', true);
+                }
+                return;
+            }
+            
+            // 数学公式
+            if (prefix === ' $' && suffix === '$ ') {
+                const formula = selectedText || 'x^2';
+                this.insertWysiwygContent(` $${formula}$ `, false);
+                return;
+            }
+            
+            // 默认处理
+            if (selectedText) {
+                this.insertWysiwygContent(`${prefix}${selectedText}${suffix}`, false);
+            } else {
+                this.insertWysiwygContent(`${prefix}${suffix}`, false);
+            }
+        },
+        
+        // 处理WYSIWYG模式下的行前缀（如列表、引用等）
+        handleWysiwygLinePrefix(prefix) {
+            if (this.editingMode !== 'wysiwyg') return;
+            
+            switch (prefix) {
+                case '> ':
+                    // 引用
+                    this.insertWysiwygContent('<blockquote><p>引用文本</p></blockquote>', true);
+                    break;
+                case '- ':
+                    // 无序列表
+                    this.insertWysiwygContent('<ul><li>列表项</li></ul>', true);
+                    break;
+                case '- [ ] ':
+                    // 任务列表
+                    this.insertWysiwygContent('<ul><li><input type="checkbox" disabled> 任务项</li></ul>', true);
+                    break;
+                default:
+                    this.insertWysiwygContent(prefix, false);
+            }
+        },
+        
+        // 处理WYSIWYG模式下的块级插入（如分割线、目录等）
+        handleWysiwygBlockInsert(content) {
+            if (this.editingMode !== 'wysiwyg') return;
+            
+            switch (content) {
+                case '------':
+                    // 分割线
+                    this.insertWysiwygContent('<hr>', true);
+                    break;
+                case '[[TOC]]':
+                    // 目录
+                    this.insertWysiwygContent('<div>[目录]</div>', true);
+                    break;
+                default:
+                    this.insertWysiwygContent(`<div>${content}</div>`, true);
+            }
+        },
+        
+        // 处理WYSIWYG模式下的标题
+        handleWysiwygHeading() {
+            if (this.editingMode !== 'wysiwyg') return;
+            
+            const selection = window.getSelection();
+            if (selection.toString()) {
+                // 如果有选中文本，将其转为标题
+                this.insertWysiwygContent(`<h1>${selection.toString()}</h1>`, true);
+            } else {
+                // 没有选中文本，插入默认标题
+                this.insertWysiwygContent('<h1>标题</h1>', true);
+            }
+        },
+
+        // ===== 原有方法 =====
+        
         get_filename(){
             return this.filename
         },
@@ -1018,7 +1487,9 @@ export default {
         },
         to_html() {
             this.htmldown = true
-            var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + this.get_md(this.mdtext) + '\n</div>'])
+            // 确保在WYSIWYG模式下也能正确导출HTML
+            const htmlContent = this.editingMode === 'wysiwyg' ? this.get_md(this.mdtext) : this.get_md(this.mdtext);
+            var blob = new Blob(['<head>\n<link href=\"https://unpkg.com/@primer/css@^20.2.4/dist/primer.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css\" integrity=\"sha384-Xi8rHCmBmhbuyyhbI88391ZKP2dmfnOl4rT9ZfRI7mLTdk1wblIUnrIq35nqwEvC\" crossorigin=\"anonymous\">\n<style type="text/css">\n' + github + '\n</style>\n</head>\n<div class=\"markdown-body\">\n' + htmlContent + '\n</div>'])
             FileSaver.saveAs(blob, (this.filename || 'undefined') + '.html')
             this.htmldown = false
         },
@@ -1080,55 +1551,79 @@ export default {
             return content
         },
         add1(str1) {
-            const oldlocs = this.$refs.input.selectionStart
-            const oldloc = this.$refs.input.selectionEnd
-            this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
-            this.$refs.input.focus();
-            this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + str1.length
-                this.$refs.input.selectionEnd = oldloc + str1.length
-            })
+            if (this.editingMode === 'split') {
+                // 原有的textarea逻辑
+                const oldlocs = this.$refs.input.selectionStart
+                const oldloc = this.$refs.input.selectionEnd
+                this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str1 + this.mdtext.slice(this.$refs.input.selectionEnd)
+                this.$refs.input.focus();
+                this.$nextTick(() => {
+                    this.$refs.input.selectionStart = oldlocs + str1.length
+                    this.$refs.input.selectionEnd = oldloc + str1.length
+                })
+            } else {
+                // WYSIWYG模式下的处理
+                this.handleWysiwygFormatting(str1);
+            }
         },
         add2(str1) {
-            const oldlocs = this.$refs.input.selectionStart
-            const oldloc = this.$refs.input.selectionEnd
-            var start = this.current_line()[0]
-            var end = this.current_line()[1]
-            if (this.mdtext.slice(start, start + str1.length) == str1) {
-                this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + str1.length)
-                var enter = -str1.length
+            if (this.editingMode === 'split') {
+                // 原有的textarea逻辑
+                const oldlocs = this.$refs.input.selectionStart
+                const oldloc = this.$refs.input.selectionEnd
+                var start = this.current_line()[0]
+                var end = this.current_line()[1]
+                if (this.mdtext.slice(start, start + str1.length) == str1) {
+                    this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + str1.length)
+                    var enter = -str1.length
+                } else {
+                    this.mdtext = this.mdtext.slice(0, start) + str1 + this.mdtext.slice(start)
+                    var enter = str1.length
+                }
+                this.$refs.input.focus();
+                this.$nextTick(() => {
+                    this.$refs.input.selectionStart = oldlocs + enter
+                    this.$refs.input.selectionEnd = oldloc + enter
+                })
             } else {
-                this.mdtext = this.mdtext.slice(0, start) + str1 + this.mdtext.slice(start)
-                var enter = str1.length
+                // WYSIWYG模式下的处理
+                this.handleWysiwygLinePrefix(str1);
             }
-            this.$refs.input.focus();
-            this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + enter
-                this.$refs.input.selectionEnd = oldloc + enter
-            })
         },
         add3(str1) {
-            const oldlocs = this.$refs.input.selectionStart
-            const oldloc = this.$refs.input.selectionEnd
-            var start = this.current_line()[0]
-            var end = this.current_line()[1]
-            //console.log(end,end-start)
-            this.mdtext = this.mdtext.slice(0, end + start) + '\n' + str1 + '\n' + this.mdtext.slice(end + start)
-            this.$refs.input.focus();
-            this.$nextTick(() => {
-                this.$refs.input.selectionStart = end + start + str1.length + 2
-                this.$refs.input.selectionEnd = end + start + str1.length + 2
-            })
+            if (this.editingMode === 'split') {
+                // 原有的textarea逻辑
+                const oldlocs = this.$refs.input.selectionStart
+                const oldloc = this.$refs.input.selectionEnd
+                var start = this.current_line()[0]
+                var end = this.current_line()[1]
+                //console.log(end,end-start)
+                this.mdtext = this.mdtext.slice(0, end + start) + '\n' + str1 + '\n' + this.mdtext.slice(end + start)
+                this.$refs.input.focus();
+                this.$nextTick(() => {
+                    this.$refs.input.selectionStart = end + start + str1.length + 2
+                    this.$refs.input.selectionEnd = end + start + str1.length + 2
+                })
+            } else {
+                // WYSIWYG模式下的处理
+                this.handleWysiwygBlockInsert(str1);
+            }
         },
         add4(str1, str2) {
-            const oldlocs = this.$refs.input.selectionStart
-            const oldloc = this.$refs.input.selectionEnd
-            this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
-            this.$refs.input.focus();
-            this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + str1.length
-                this.$refs.input.selectionEnd = oldloc + str1.length
-            })
+            if (this.editingMode === 'split') {
+                // 原有的textarea逻辑
+                const oldlocs = this.$refs.input.selectionStart
+                const oldloc = this.$refs.input.selectionEnd
+                this.mdtext = this.mdtext.slice(0, this.$refs.input.selectionStart) + str1 + this.mdtext.slice(this.$refs.input.selectionStart, this.$refs.input.selectionEnd) + str2 + this.mdtext.slice(this.$refs.input.selectionEnd)
+                this.$refs.input.focus();
+                this.$nextTick(() => {
+                    this.$refs.input.selectionStart = oldlocs + str1.length
+                    this.$refs.input.selectionEnd = oldloc + str1.length
+                })
+            } else {
+                // WYSIWYG模式下的处理
+                this.handleWysiwygWrapping(str1, str2);
+            }
         },
         opentex() {
             this.tex = true
@@ -1137,49 +1632,34 @@ export default {
             this.tex = false
         },
         title() {
-            const oldlocs = this.$refs.input.selectionStart
-            const oldloc = this.$refs.input.selectionEnd
-            var start = this.current_line()[0]
-            var end = this.current_line()[1]
-            if (this.mdtext.slice(start, start + 7) == '###### ') {
-                this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + 7)
-                var enter = -7
-            } else {
-                if (this.mdtext.slice(start, start + 1) == '#') {
-                    this.mdtext = this.mdtext.slice(0, start) + '#' + this.mdtext.slice(start)
-                    var enter = 1
+            if (this.editingMode === 'split') {
+                // 原有的textarea逻辑
+                const oldlocs = this.$refs.input.selectionStart
+                const oldloc = this.$refs.input.selectionEnd
+                var start = this.current_line()[0]
+                var end = this.current_line()[1]
+                if (this.mdtext.slice(start, start + 7) == '###### ') {
+                    this.mdtext = this.mdtext.slice(0, start) + this.mdtext.slice(start + 7)
+                    var enter = -7
                 } else {
-                    this.mdtext = this.mdtext.slice(0, start) + '# ' + this.mdtext.slice(start)
-                    var enter = 2
+                    if (this.mdtext.slice(start, start + 1) == '#') {
+                        this.mdtext = this.mdtext.slice(0, start) + '#' + this.mdtext.slice(start)
+                        var enter = 1
+                    } else {
+                        this.mdtext = this.mdtext.slice(0, start) + '# ' + this.mdtext.slice(start)
+                        var enter = 2
+                    }
                 }
+                
+                this.$refs.input.focus();
+                this.$nextTick(() => {
+                    this.$refs.input.selectionStart = oldlocs + enter
+                    this.$refs.input.selectionEnd = oldloc + enter
+                })
+            } else {
+                // WYSIWYG模式下的处理
+                this.handleWysiwygHeading();
             }
-            
-            //const oldloc = this.$refs.input.selectionEnd
-            //const list = this.mdtext.split("\n")
-            //console.log(list[list.length - 1].search('# ') != -1)
-            //var text = ''
-            //if (list[list.length - 1].slice(0, 1) == '#') {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    if (list[list.length - 1].search('###### ') != -1) {
-            //        this.mdtext = text + '#' + list[list.length - 1].slice(6)
-            //    } else {
-            //        this.mdtext = text + '#' + list[list.length - 1]
-            //    }
-            //   var enter = 0
-            //} else {
-            //    for (var i = 0; i < list.length - 1; i++) {
-            //        text += list[i] + '\n'
-            //    }
-            //    this.mdtext = text + '# ' + list[list.length - 1]
-            //    var enter = 1
-            //}
-            this.$refs.input.focus();
-            this.$nextTick(() => {
-                this.$refs.input.selectionStart = oldlocs + enter
-                this.$refs.input.selectionEnd = oldloc + enter
-            })
         },
         current_line() {
             var pos = this.$refs.input.selectionStart
