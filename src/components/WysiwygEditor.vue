@@ -96,10 +96,54 @@ export default {
       
       // Use the parent's get_md method for consistency with the preview
       if (this.$parent && this.$parent.get_md) {
-        return this.$parent.get_md(markdown)
+        const html = this.$parent.get_md(markdown)
+        
+        // Clean up the HTML for WYSIWYG editing
+        return this.cleanHtmlForWysiwyg(html)
       }
       
       // Fallback basic conversion (kept for safety)
+      return this.basicMarkdownToHtml(markdown)
+    },
+
+    // Clean HTML output from MarkdownIt for WYSIWYG editing
+    cleanHtmlForWysiwyg(html) {
+      // Remove or modify elements that don't work well in contenteditable
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = html
+      
+      // Handle code blocks with line numbers (from MarkdownIt highlight.js setup)
+      const codeBlocks = tempDiv.querySelectorAll('pre.hljs')
+      codeBlocks.forEach(pre => {
+        const ol = pre.querySelector('ol')
+        if (ol) {
+          // Convert numbered code lines back to simple code block
+          const code = pre.querySelector('code')
+          if (code) {
+            const lines = Array.from(ol.querySelectorAll('li')).map(li => li.textContent).join('\n')
+            code.innerHTML = ''
+            code.textContent = lines
+            // Remove the ol and replace with simple text
+            ol.remove()
+          }
+        }
+      })
+
+      // Handle task lists (convert to regular lists for editing)
+      const taskItems = tempDiv.querySelectorAll('li.task-list-item input[type="checkbox"]')
+      taskItems.forEach(checkbox => {
+        const li = checkbox.closest('li')
+        const checked = checkbox.checked
+        // Replace checkbox with text representation
+        checkbox.remove()
+        li.textContent = (checked ? '[x] ' : '[ ] ') + li.textContent
+      })
+
+      return tempDiv.innerHTML
+    },
+
+    // Basic Markdown to HTML conversion (fallback)
+    basicMarkdownToHtml(markdown) {
       let html = markdown
         // Headers
         .replace(/^### (.*$)/gm, '<h3>$1</h3>')
@@ -141,7 +185,60 @@ export default {
       const tempDiv = document.createElement('div')
       tempDiv.innerHTML = html
       
-      return this.domToMarkdown(tempDiv)
+      // Clean up the HTML first
+      this.preprocessHtmlForConversion(tempDiv)
+      
+      let markdown = this.domToMarkdown(tempDiv).trim()
+      
+      // Clean up the final markdown
+      markdown = markdown
+        .replace(/\n\n\n+/g, '\n\n')  // Remove excessive line breaks
+        .replace(/^\n+|\n+$/g, '')     // Remove leading/trailing newlines
+        .replace(/\n\n$/, '\n')        // Remove final double newline
+      
+      return markdown
+    },
+
+    // Preprocess HTML before conversion to clean up contenteditable artifacts
+    preprocessHtmlForConversion(container) {
+      // Remove empty paragraphs and divs
+      const emptyElements = container.querySelectorAll('p:empty, div:empty')
+      emptyElements.forEach(el => el.remove())
+      
+      // Convert <div> elements to <p> for better Markdown conversion
+      const divs = container.querySelectorAll('div')
+      divs.forEach(div => {
+        if (!div.querySelector('div, p, ul, ol, pre, blockquote, h1, h2, h3, h4, h5, h6')) {
+          // This div only contains inline content, convert to paragraph
+          const p = document.createElement('p')
+          p.innerHTML = div.innerHTML
+          div.parentNode.replaceChild(p, div)
+        }
+      })
+      
+      // Merge consecutive line breaks
+      const textNodes = this.getTextNodes(container)
+      textNodes.forEach(node => {
+        node.textContent = node.textContent.replace(/\n\s*\n/g, '\n')
+      })
+    },
+
+    // Get all text nodes in a container
+    getTextNodes(container) {
+      const textNodes = []
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      )
+      
+      let node
+      while (node = walker.nextNode()) {
+        textNodes.push(node)
+      }
+      
+      return textNodes
     },
 
     // Convert DOM node to Markdown recursively
@@ -231,8 +328,10 @@ export default {
           result = '\n'
           break
         case 'p':
-          const innerContent = this.getInnerMarkdown(node)
-          result = innerContent + (innerContent ? '\n\n' : '')
+          const innerContent = this.getInnerMarkdown(node).trim()
+          if (innerContent) {
+            result = innerContent + '\n\n'
+          }
           break
         case 'blockquote':
           const lines = this.getInnerMarkdown(node).split('\n').filter(line => line.trim())
@@ -241,13 +340,68 @@ export default {
         case 'hr':
           result = '---\n\n'
           break
+        case 'table':
+          result = this.convertTable(node) + '\n\n'
+          break
         case 'div':
-          // Handle div as paragraph-like content
-          result = this.getInnerMarkdown(node) + '\n\n'
+          // Handle div as paragraph-like content, but be careful about nested structure
+          const innerContent = this.getInnerMarkdown(node)
+          if (innerContent.trim()) {
+            result = innerContent + '\n\n'
+          }
+          break
+        case 'span':
+          // Handle special span cases (math formulas, etc.)
+          if (node.classList.contains('katex') || node.classList.contains('katex-display')) {
+            // Try to extract original LaTeX from data attributes or reconstruct
+            result = this.extractMathFormula(node)
+          } else {
+            result = this.getInnerMarkdown(node)
+          }
           break
         default:
           result = this.getInnerMarkdown(node)
           break
+      }
+      
+      return result
+    },
+
+    // Extract math formula from KaTeX rendered element
+    extractMathFormula(katexElement) {
+      // Try to find original LaTeX in data attributes
+      const annotation = katexElement.querySelector('.katex-html annotation')
+      if (annotation) {
+        const isDisplayMode = katexElement.classList.contains('katex-display')
+        const formula = annotation.textContent
+        return isDisplayMode ? `$$${formula}$$` : `$${formula}$`
+      }
+      
+      // Fallback to placeholder
+      return '$formula$'
+    },
+
+    // Convert table to Markdown
+    convertTable(tableElement) {
+      const rows = Array.from(tableElement.querySelectorAll('tr'))
+      if (rows.length === 0) return ''
+      
+      const markdownRows = []
+      
+      rows.forEach((row, rowIndex) => {
+        const cells = Array.from(row.querySelectorAll('th, td'))
+        const cellContents = cells.map(cell => this.getInnerMarkdown(cell).trim())
+        markdownRows.push('| ' + cellContents.join(' | ') + ' |')
+        
+        // Add separator after header row
+        if (rowIndex === 0 && row.querySelector('th')) {
+          const separator = '| ' + cells.map(() => '---').join(' | ') + ' |'
+          markdownRows.push(separator)
+        }
+      })
+      
+      return markdownRows.join('\n')
+    },
       }
       
       return result
@@ -278,7 +432,7 @@ export default {
       for (const child of node.childNodes) {
         result += this.domToMarkdown(child)
       }
-      return result
+      return result.replace(/\n\n+/g, '\n\n').trim()
     },
 
     // Handle input events
@@ -289,9 +443,102 @@ export default {
     // Handle paste events
     handlePaste(event) {
       event.preventDefault()
-      const text = event.clipboardData.getData('text/plain')
-      document.execCommand('insertText', false, text)
+      
+      const clipboardData = event.clipboardData || window.clipboardData
+      
+      // Try to get HTML content first (for rich paste)
+      const htmlData = clipboardData.getData('text/html')
+      const textData = clipboardData.getData('text/plain')
+      
+      if (htmlData && htmlData.trim()) {
+        // Process rich content
+        this.processRichPaste(htmlData)
+      } else {
+        // Insert plain text
+        document.execCommand('insertText', false, textData)
+      }
+      
       this.debouncedConvertToMarkdown()
+    },
+
+    // Process rich content paste
+    processRichPaste(html) {
+      // Create a temporary container to clean the HTML
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = html
+      
+      // Clean up the pasted content
+      this.cleanPastedHtml(tempDiv)
+      
+      // Insert the cleaned content
+      const selection = window.getSelection()
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0)
+        range.deleteContents()
+        
+        // Insert each child of the temp div
+        const fragment = document.createDocumentFragment()
+        while (tempDiv.firstChild) {
+          fragment.appendChild(tempDiv.firstChild)
+        }
+        
+        range.insertNode(fragment)
+      }
+    },
+
+    // Clean pasted HTML content
+    cleanPastedHtml(container) {
+      // Remove unwanted elements and attributes
+      const unwantedElements = container.querySelectorAll('script, style, meta, link')
+      unwantedElements.forEach(el => el.remove())
+      
+      // Remove all style attributes
+      const elementsWithStyle = container.querySelectorAll('[style]')
+      elementsWithStyle.forEach(el => el.removeAttribute('style'))
+      
+      // Remove class attributes except for code language classes
+      const elementsWithClass = container.querySelectorAll('[class]')
+      elementsWithClass.forEach(el => {
+        const classes = el.className
+        if (!classes.includes('language-') && !classes.includes('hljs')) {
+          el.removeAttribute('class')
+        }
+      })
+      
+      // Convert common formatting elements
+      this.normalizeFormattingElements(container)
+    },
+
+    // Normalize formatting elements from different sources
+    normalizeFormattingElements(container) {
+      // Convert <b> to <strong>
+      const boldElements = container.querySelectorAll('b')
+      boldElements.forEach(b => {
+        const strong = document.createElement('strong')
+        strong.innerHTML = b.innerHTML
+        b.parentNode.replaceChild(strong, b)
+      })
+      
+      // Convert <i> to <em>
+      const italicElements = container.querySelectorAll('i')
+      italicElements.forEach(i => {
+        const em = document.createElement('em')
+        em.innerHTML = i.innerHTML
+        i.parentNode.replaceChild(em, i)
+      })
+      
+      // Handle Word-style formatting
+      const spans = container.querySelectorAll('span')
+      spans.forEach(span => {
+        // If span has no meaningful attributes, unwrap it
+        if (!span.hasAttribute('class') && !span.hasAttribute('id')) {
+          const parent = span.parentNode
+          while (span.firstChild) {
+            parent.insertBefore(span.firstChild, span)
+          }
+          parent.removeChild(span)
+        }
+      })
     },
 
     // Handle keydown events
@@ -548,7 +795,6 @@ export default {
       
       this.debouncedConvertToMarkdown()
     }
-  }
 }
 </script>
 
