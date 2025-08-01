@@ -821,7 +821,6 @@ export default {
             return bestBreakPoint;
         },
 
-        // 改进的PDF导出函数
         async to_pdf(length = 20) {
             this.pdfdown = true;
             this.count = 0;
@@ -830,9 +829,6 @@ export default {
                 // 设置A4宽度并等待布局稳定
                 this.setA4Width();
                 await new Promise(resolve => setTimeout(resolve, 800));
-                
-                // 应用图像优化滤镜
-                this.applyImageEnhancementFilters();
                 
                 const pdf = new jsPDF('', 'pt', 'a4');
                 const pageWidth = 595.28;
@@ -893,16 +889,10 @@ export default {
                             y: startY,
                             useCORS: true,
                             allowTaint: true,
-                            backgroundColor: '#ffffff',
-                            // 启用图像平滑和高质量渲染
-                            imageSmoothingEnabled: true,
-                            imageSmoothingQuality: 'high'
+                            backgroundColor: '#ffffff'
                         });
                         
-                        // 应用锐化滤镜
-                        const processedCanvas = this.applySharpeningFilter(canvas);
-                        
-                        const imgData = processedCanvas.toDataURL('image/jpeg', 1.0);
+                        const imgData = canvas.toDataURL('image/jpeg', 1.0);
                         const pdfImageWidth = pdfContentWidth;
                         const pdfImageHeight = (canvas.height / canvas.width) * pdfImageWidth;
                         
@@ -941,7 +931,6 @@ export default {
                 console.log('=== PDF导出完成 ===');
                 
             } finally {
-                this.removeImageEnhancementFilters();
                 this.restoreOriginalWidth();
                 this.pdfdown = false;
             }
@@ -957,108 +946,20 @@ export default {
                 // 等待布局稳定
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
-                // 应用图像优化滤镜
-                this.applyImageEnhancementFilters();
-                
                 const canvas = await html2canvas(this.$refs.exportContent, {
                     scale: 2.5,
                     useCORS: true,
                     allowTaint: true,
-                    backgroundColor: '#ffffff',
-                    // 启用图像平滑和高质量渲染
-                    imageSmoothingEnabled: true,
-                    imageSmoothingQuality: 'high'
+                    backgroundColor: '#ffffff'
                 });
                 
-                // 后处理：应用锐化滤镜
-                const processedCanvas = this.applySharpeningFilter(canvas);
-                
-                const blob = processedCanvas.toDataURL('image/png', 1.0);
+                const blob = canvas.toDataURL('image/png', 1.0);
                 FileSaver.saveAs(blob, (this.filename || 'undefined') + '.png');
                 
             } finally {
-                this.removeImageEnhancementFilters();
                 this.restoreOriginalWidth();
                 this.pngdown = false;
             }
-        },
-
-        // 应用图像增强滤镜
-        applyImageEnhancementFilters() {
-            const exportElement = this.$refs.exportContent;
-            if (exportElement) {
-                // 应用CSS滤镜来增强对比度和锐度
-                exportElement.style.filter = 'contrast(1.1) brightness(1.02) saturate(1.05)';
-                exportElement.style.textRendering = 'optimizeLegibility';
-                exportElement.style.webkitFontSmoothing = 'antialiased';
-                exportElement.style.mozOsxFontSmoothing = 'grayscale';
-            }
-        },
-
-        // 移除图像增强滤镜
-        removeImageEnhancementFilters() {
-            const exportElement = this.$refs.exportContent;
-            if (exportElement) {
-                exportElement.style.filter = '';
-                exportElement.style.textRendering = '';
-                exportElement.style.webkitFontSmoothing = '';
-                exportElement.style.mozOsxFontSmoothing = '';
-            }
-        },
-
-        // 应用锐化滤镜到Canvas
-        applySharpeningFilter(canvas) {
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            
-            // 锐化卷积核
-            const sharpenKernel = [
-                0, -1, 0,
-                -1, 5, -1,
-                0, -1, 0
-            ];
-            
-            const width = canvas.width;
-            const height = canvas.height;
-            const output = new Uint8ClampedArray(data.length);
-            
-            // 应用卷积滤镜
-            for (let y = 1; y < height - 1; y++) {
-                for (let x = 1; x < width - 1; x++) {
-                    const idx = (y * width + x) * 4;
-                    
-                    for (let c = 0; c < 3; c++) { // RGB channels
-                        let sum = 0;
-                        for (let ky = -1; ky <= 1; ky++) {
-                            for (let kx = -1; kx <= 1; kx++) {
-                                const pixelIdx = ((y + ky) * width + (x + kx)) * 4;
-                                const kernelIdx = (ky + 1) * 3 + (kx + 1);
-                                sum += data[pixelIdx + c] * sharpenKernel[kernelIdx];
-                            }
-                        }
-                        output[idx + c] = Math.max(0, Math.min(255, sum));
-                    }
-                    output[idx + 3] = data[idx + 3]; // Alpha channel
-                }
-            }
-            
-            // 复制边缘像素
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width; x++) {
-                    if (y === 0 || y === height - 1 || x === 0 || x === width - 1) {
-                        const idx = (y * width + x) * 4;
-                        for (let c = 0; c < 4; c++) {
-                            output[idx + c] = data[idx + c];
-                        }
-                    }
-                }
-            }
-            
-            const newImageData = new ImageData(output, width, height);
-            ctx.putImageData(newImageData, 0, 0);
-            
-            return canvas;
         },
 
         async renderOversizedPage(contentElement, startY, pageHeight, pdf, margin, pdfContentWidth, needNewPage, contentWidth) {
