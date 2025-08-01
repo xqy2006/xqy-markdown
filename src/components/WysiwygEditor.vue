@@ -561,12 +561,17 @@ export default {
       const beforeCursor = text.substring(0, offset)
       const afterCursor = text.substring(offset)
       
-      // Check for markdown patterns
-      this.convertMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
+      // Check for inline patterns first (higher priority as they're more specific)
+      if (this.convertInlineMarkdownPatterns(textNode, beforeCursor, afterCursor, range)) {
+        return // If inline pattern was processed, don't check block patterns
+      }
+      
+      // Check for block-level patterns
+      this.convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
     },
 
-    // Convert markdown patterns in real-time
-    convertMarkdownPatterns(textNode, beforeCursor, afterCursor, range) {
+    // Convert inline markdown patterns in real-time
+    convertInlineMarkdownPatterns(textNode, beforeCursor, afterCursor, range) {
       const patterns = [
         // Bold: **text** or __text__
         {
@@ -642,12 +647,11 @@ export default {
           selection.removeAllRanges()
           selection.addRange(newRange)
           
-          break // Only process one pattern at a time
+          return true // Pattern was processed
         }
       }
       
-      // Check for block-level patterns at the beginning of paragraphs
-      this.convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
+      return false // No pattern was processed
     },
 
     // Convert block-level markdown patterns
@@ -655,11 +659,15 @@ export default {
       const blockElement = this.getClosestBlockElement(textNode)
       if (!blockElement || blockElement.tagName.toLowerCase() !== 'p') return
       
-      const fullText = blockElement.textContent
+      const fullText = blockElement.textContent.trim()
+      
+      // Only process if we're at the end of the text (or after a space)
+      const atEndOfText = beforeCursor.length === fullText.length || beforeCursor.endsWith(' ')
+      if (!atEndOfText) return
       
       // Heading patterns: # text, ## text, etc.
-      const headingMatch = fullText.match(/^(#{1,6})\s+(.*)$/)
-      if (headingMatch && beforeCursor.includes('#')) {
+      const headingMatch = fullText.match(/^(#{1,6})\s+(.+)$/)
+      if (headingMatch) {
         const level = headingMatch[1].length
         const content = headingMatch[2] || `标题 ${level}`
         
@@ -679,21 +687,26 @@ export default {
           const selection = window.getSelection()
           selection.removeAllRanges()
           selection.addRange(newRange)
+          
+          // Prevent the debounced conversion from interfering
+          setTimeout(() => {
+            this.debouncedConvertToMarkdown()
+          }, 100)
         }
         return
       }
       
       // List patterns: - text, * text, + text
-      const unorderedListMatch = fullText.match(/^[-*+]\s+(.*)$/)
-      if (unorderedListMatch && (beforeCursor.includes('-') || beforeCursor.includes('*') || beforeCursor.includes('+'))) {
+      const unorderedListMatch = fullText.match(/^[-*+]\s+(.+)$/)
+      if (unorderedListMatch) {
         const content = unorderedListMatch[1] || '列表项'
         this.convertParagraphToList(blockElement, 'ul', content)
         return
       }
       
       // Ordered list patterns: 1. text, 2. text, etc.
-      const orderedListMatch = fullText.match(/^(\d+)\.\s+(.*)$/)
-      if (orderedListMatch && beforeCursor.includes('.')) {
+      const orderedListMatch = fullText.match(/^(\d+)\.\s+(.+)$/)
+      if (orderedListMatch) {
         const content = orderedListMatch[2] || '列表项'
         this.convertParagraphToList(blockElement, 'ol', content)
         return
@@ -725,6 +738,11 @@ export default {
         const selection = window.getSelection()
         selection.removeAllRanges()
         selection.addRange(newRange)
+        
+        // Prevent the debounced conversion from interfering
+        setTimeout(() => {
+          this.debouncedConvertToMarkdown()
+        }, 100)
       }
     },
 
@@ -880,7 +898,35 @@ export default {
         case 'Tab':
           this.handleTabKey(event)
           break
+        case ' ':
+          // Trigger markdown processing on space
+          setTimeout(() => {
+            this.processMarkdownOnTrigger()
+          }, 10)
+          break
       }
+    },
+
+    // Process markdown on specific triggers (space, enter, etc.)
+    processMarkdownOnTrigger() {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      if (!range.collapsed) return
+      
+      const textNode = range.startContainer
+      if (textNode.nodeType !== Node.TEXT_NODE) return
+      
+      const text = textNode.textContent
+      const offset = range.startOffset
+      
+      // Get the text before cursor
+      const beforeCursor = text.substring(0, offset)
+      const afterCursor = text.substring(offset)
+      
+      // Only check block patterns on trigger
+      this.convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
     },
 
     // Insert inline code
