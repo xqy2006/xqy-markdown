@@ -54,46 +54,46 @@
     </div>
     <div class="Box-row" id="buttons">
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="title()">标题</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')">代码块</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')">单行代码</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')">img</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')">引用</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')">无序列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')">任务列表</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')">目录</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add3('------')">分割线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')">Tex公式</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()">显示Tex工具箱</button></td>
-            <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()">隐藏Tex工具箱</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="title()" aria-label="标题"><Heading :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('\n\`\`\`\n')" aria-label="代码块"><Code :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('\`')" aria-label="单行代码"><Code2 :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('![](',')')" aria-label="图片"><Image :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('> ')" aria-label="引用"><Quote :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('- ')" aria-label="无序列表"><List :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add2('- [ ] ')" aria-label="任务列表"><CheckSquare :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add3('[[TOC]]')" aria-label="目录"><BookOpen :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add3('------')" aria-label="分割线"><Minus :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4(' $','$ ')" aria-label="Tex公式"><Sigma :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" v-if="!tex" @click="opentex()" aria-label="显示Tex工具箱"><Eye :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" v-if="tex" @click="closetex()" aria-label="隐藏Tex工具箱"><EyeOff :size="16" /></button></td>
         </span>
         <span class="BtnGroup d-block" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add1('**')">粗体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('*')">斜体</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')">下划线</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')">标红</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')">高亮</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')">删除线</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('**')" aria-label="粗体"><Bold :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('*')" aria-label="斜体"><Italic :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<u>','</u>')" aria-label="下划线"><Underline :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<font color=\x22red\x22>','</font>')" aria-label="标红"><Type :size="16" style="color: #d73a49;" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('<mark>','</mark>')" aria-label="高亮"><Highlighter :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add1('~~')" aria-label="删除线"><Strikethrough :size="16" /></button></td>
         </span>
         <span class="BtnGroup d-block" v-if="tex" style="margin-top: 5px;margin-inline-start: 15px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
-            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')">加号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')">减号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')">点乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')">叉乘</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')">除法</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')">换行</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')">分数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')">上标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')">下标</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')">根号</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')">向量</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')">弧</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')">导数</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')">求和</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')">求积</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')">极限</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')">积分</button></td>
-            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')">大括号</button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('+','')" aria-label="加号"><Plus :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('-','')" aria-label="减号"><Minus :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\cdot','')" aria-label="点乘"><CircleDot :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\times','')" aria-label="叉乘"><X :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\div','')" aria-label="除法"><Divide :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\\\','')" aria-label="换行"><RotateCcw :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\frac{','}{}')" aria-label="分数"><span style="font-size: 12px; font-weight: bold;">a/b</span></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('^{','}')" aria-label="上标"><ArrowUp :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('_{','}')" aria-label="下标"><ArrowDown :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sqrt[]{','}')" aria-label="根号"><SquareRadical :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overrightarrow{','}')" aria-label="向量"><ArrowRight :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\overset{\\frown}{','}')" aria-label="弧"><span style="font-size: 12px;">⌒</span></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\'','')" aria-label="导数"><span style="font-size: 12px;">f'</span></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\sum_{','}^{} {}')" aria-label="求和"><Sigma :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\prod_{','}^{} {}')" aria-label="求积"><span style="font-size: 12px;">∏</span></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\lim_{n \\to \\infty}{','}')" aria-label="极限"><span style="font-size: 10px;">lim</span></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\int_{}^{} {','}\\, dx')" aria-label="积分"><FunctionSquare :size="16" /></button></td>
+            <td><button class="btn btn-invisible btn-sm" @click="add4('\\begin{cases}line1','\\\\line2\\end{cases}')" aria-label="大括号"><Braces :size="16" /></button></td>
         </span>
     </div>
     <div class="Box-row" id="mytextarea" style="margin-inline-start: 15px;margin-inline-end: 15px;">
@@ -281,6 +281,29 @@ code {
     box-shadow: none !important;
     background: transparent !important;
 }
+
+/* 工具栏图标样式 */
+.btn svg {
+    vertical-align: middle;
+    display: inline-block;
+}
+
+.btn-invisible {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 28px;
+}
+
+/* 确保图标在不同主题下都能正常显示 */
+.btn-invisible svg {
+    color: var(--color-fg-default, #24292f);
+}
+
+.btn-invisible:hover svg {
+    color: var(--color-accent-emphasis, #0969da);
+}
 </style>
 
 <script>
@@ -297,7 +320,23 @@ import katex from 'katex'
 import footnote from 'markdown-it-footnote'
 import github from './github.css?raw'
 
+// Import Lucide Icons
+import { 
+  Heading, Code, Code2, Image, Quote, List, CheckSquare, BookOpen, Minus, Sigma,
+  Bold, Italic, Underline, Type, Highlighter, Strikethrough,
+  Plus, Divide, X, SquareRadical, ArrowRight, ArrowUp, ArrowDown, 
+  Braces, Infinity, FunctionSquare, Eye, EyeOff,
+  Hash, Triangle, CircleDot, Zap, Percent, RotateCcw
+} from 'lucide-vue-next'
+
 export default {
+    components: {
+        Heading, Code, Code2, Image, Quote, List, CheckSquare, BookOpen, Minus, Sigma,
+        Bold, Italic, Underline, Type, Highlighter, Strikethrough,
+        Plus, Divide, X, SquareRadical, ArrowRight, ArrowUp, ArrowDown, 
+        Braces, Infinity, FunctionSquare, Eye, EyeOff,
+        Hash, Triangle, CircleDot, Zap, Percent, RotateCcw
+    },
     data() {
         return {
             mdtext: '',
@@ -782,7 +821,6 @@ export default {
             return bestBreakPoint;
         },
 
-        // 改进的PDF导出函数
         async to_pdf(length = 20) {
             this.pdfdown = true;
             this.count = 0;
