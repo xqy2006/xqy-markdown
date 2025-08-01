@@ -164,12 +164,27 @@ export default {
       // Process elements to make them suitable for contenteditable
       this.processElementsForWysiwyg(tempDiv)
       
-      // Ensure there's always a paragraph if content is empty or only whitespace
+      // Ensure there's always content with proper block structure
       if (!tempDiv.innerHTML.trim() || tempDiv.innerHTML === '<br>') {
         return '<p><br></p>'
       }
       
-      return tempDiv.innerHTML
+      // Wrap orphaned text nodes in paragraphs
+      let result = tempDiv.innerHTML
+      
+      // If content doesn't start with a block element, wrap it
+      if (!tempDiv.firstElementChild || !this.isBlockElement(tempDiv.firstElementChild)) {
+        result = `<p>${result}</p>`
+      }
+      
+      return result
+    },
+
+    // Check if element is a block element
+    isBlockElement(element) {
+      if (!element || !element.tagName) return false
+      const blockTags = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'HR', 'TABLE']
+      return blockTags.includes(element.tagName)
     },
 
     // Process elements recursively for WYSIWYG editing
@@ -377,29 +392,35 @@ export default {
       
       const processNode = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
-          return node.textContent || ''
+          // Remove zero-width spaces
+          return (node.textContent || '').replace(/\u200b/g, '')
         } else if (node.nodeType === Node.ELEMENT_NODE) {
           const tagName = node.tagName.toLowerCase()
           
           switch (tagName) {
             case 'strong':
             case 'b':
-              return `**${this.getTextContent(node)}**`
+              const strongText = this.getTextContent(node).replace(/\u200b/g, '')
+              return strongText ? `**${strongText}**` : ''
             case 'em':
             case 'i':
-              return `*${this.getTextContent(node)}*`
+              const emText = this.getTextContent(node).replace(/\u200b/g, '')
+              return emText ? `*${emText}*` : ''
             case 'u':
-              return `<u>${this.getTextContent(node)}</u>`
+              const uText = this.getTextContent(node).replace(/\u200b/g, '')
+              return uText ? `<u>${uText}</u>` : ''
             case 's':
             case 'strike':
             case 'del':
-              return `~~${this.getTextContent(node)}~~`
+              const strikeText = this.getTextContent(node).replace(/\u200b/g, '')
+              return strikeText ? `~~${strikeText}~~` : ''
             case 'code':
-              return `\`${this.getTextContent(node)}\``
+              const codeText = this.getTextContent(node).replace(/\u200b/g, '')
+              return codeText ? `\`${codeText}\`` : ''
             case 'a':
               const href = node.getAttribute('href') || ''
-              const text = this.getTextContent(node)
-              return `[${text}](${href})`
+              const linkText = this.getTextContent(node).replace(/\u200b/g, '')
+              return linkText ? `[${linkText}](${href})` : ''
             case 'img':
               const src = node.getAttribute('src') || ''
               const alt = node.getAttribute('alt') || ''
@@ -424,7 +445,7 @@ export default {
       if (!element) return ''
       
       if (element.nodeType === Node.TEXT_NODE) {
-        return element.textContent || ''
+        return (element.textContent || '').replace(/\u200b/g, '')
       }
       
       let result = ''
@@ -621,13 +642,16 @@ export default {
     // Insert inline code
     insertInlineCode() {
       const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
       const selectedText = selection.toString()
       
+      const code = document.createElement('code')
+      
       if (selectedText) {
-        const code = document.createElement('code')
+        // Has selection - wrap it
         code.textContent = selectedText
-        
-        const range = selection.getRangeAt(0)
         range.deleteContents()
         range.insertNode(code)
         
@@ -637,9 +661,20 @@ export default {
         newRange.collapse(true)
         selection.removeAllRanges()
         selection.addRange(newRange)
+      } else {
+        // No selection - create with ZWSP placeholder
+        code.textContent = '\u200b' // Zero-width space
+        range.insertNode(code)
         
-        this.debouncedConvertToMarkdown()
+        // Position cursor inside the code element
+        const newRange = document.createRange()
+        newRange.setStart(code.firstChild, 1)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
       }
+      
+      this.debouncedConvertToMarkdown()
     },
 
     // Handle backspace key for better behavior
@@ -704,13 +739,18 @@ export default {
 
     // Get closest block element
     getClosestBlockElement(node) {
-      const blockElements = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'BLOCKQUOTE', 'PRE', 'LI']
+      if (!node) return null
       
-      while (node && node.nodeType === Node.ELEMENT_NODE) {
-        if (blockElements.includes(node.tagName)) {
-          return node
+      const blockElements = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DIV', 'BLOCKQUOTE', 'PRE', 'LI', 'UL', 'OL']
+      
+      // Start from the node itself if it's an element
+      let currentNode = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+      
+      while (currentNode && currentNode !== this.$refs.editorContent) {
+        if (blockElements.includes(currentNode.tagName)) {
+          return currentNode
         }
-        node = node.parentNode
+        currentNode = currentNode.parentElement
       }
       
       return null
@@ -906,8 +946,6 @@ export default {
       const range = selection.getRangeAt(0)
       const selectedText = selection.toString()
       
-      if (!selectedText) return
-      
       let element
       switch (command) {
         case 'bold':
@@ -926,15 +964,29 @@ export default {
           return
       }
       
-      element.textContent = selectedText
-      range.deleteContents()
-      range.insertNode(element)
-      
-      // Restore selection
-      const newRange = document.createRange()
-      newRange.selectNodeContents(element)
-      selection.removeAllRanges()
-      selection.addRange(newRange)
+      if (selectedText) {
+        // Has selection - wrap the selected text
+        element.textContent = selectedText
+        range.deleteContents()
+        range.insertNode(element)
+        
+        // Restore selection
+        const newRange = document.createRange()
+        newRange.selectNodeContents(element)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      } else {
+        // No selection - create element with ZWSP placeholder (vditor pattern)
+        element.textContent = '\u200b' // Zero-width space
+        range.insertNode(element)
+        
+        // Position cursor inside the element
+        const newRange = document.createRange()
+        newRange.setStart(element.firstChild, 1)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
       
       this.debouncedConvertToMarkdown()
     },
@@ -945,32 +997,56 @@ export default {
       if (selection.rangeCount === 0) return
       
       const range = selection.getRangeAt(0)
-      let blockElement = range.startContainer
+      let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      // Find the closest block element
-      while (blockElement && blockElement.nodeType !== Node.ELEMENT_NODE) {
-        blockElement = blockElement.parentNode
+      // If no block element found, look at the offset child
+      if (!blockElement) {
+        const container = range.startContainer
+        if (container.nodeType === Node.ELEMENT_NODE && container.childNodes[range.startOffset]) {
+          blockElement = container.childNodes[range.startOffset]
+        } else if (container.parentElement) {
+          blockElement = this.getClosestBlockElement(container.parentElement)
+        }
       }
       
-      while (blockElement && !blockElement.getAttribute('data-block')) {
-        blockElement = blockElement.parentNode
-      }
-      
-      if (blockElement) {
-        const heading = document.createElement(`h${level}`)
-        heading.setAttribute('data-block', '0')
-        heading.textContent = blockElement.textContent || `标题 ${level}`
-        
-        blockElement.parentNode.replaceChild(heading, blockElement)
-        
-        // Set cursor in heading
+      // If still no block element, create one in the editor
+      if (!blockElement && this.$refs.editorContent.children.length === 0) {
+        this.$refs.editorContent.innerHTML = '<p><br></p>'
+        blockElement = this.$refs.editorContent.firstChild
         const newRange = document.createRange()
-        newRange.selectNodeContents(heading)
+        newRange.setStart(blockElement, 0)
+        newRange.collapse(true)
         selection.removeAllRanges()
         selection.addRange(newRange)
       }
       
-      this.debouncedConvertToMarkdown()
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        // Save cursor position with wbr
+        range.insertNode(document.createElement('wbr'))
+        
+        // Get current content, removing wbr for clean content
+        let content = blockElement.innerHTML
+        const wbr = blockElement.querySelector('wbr')
+        if (wbr) {
+          // Remember wbr position before removing it
+          wbr.remove()
+        }
+        
+        // Create new heading
+        const heading = document.createElement(`h${level}`)
+        // Preserve content or set default text
+        heading.innerHTML = content.trim() || `标题 ${level}<wbr>`
+        
+        // Replace the old element with the new heading
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(heading, blockElement)
+        }
+        
+        // Restore cursor position
+        this.restoreCursorPosition()
+        
+        this.debouncedConvertToMarkdown()
+      }
     },
 
     // Insert list - vditor inspired
@@ -979,43 +1055,61 @@ export default {
       if (selection.rangeCount === 0) return
       
       const range = selection.getRangeAt(0)
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      // If no block element, try to find from cursor position
+      if (!blockElement && range.startContainer.nodeType === Node.ELEMENT_NODE) {
+        blockElement = range.startContainer.childNodes[range.startOffset]
+      }
+      
+      // Create the list structure
       const list = document.createElement(type)
-      list.setAttribute('data-block', '0')
-      
       const listItem = document.createElement('li')
-      listItem.setAttribute('data-block', '0')
-      listItem.textContent = '列表项'
       
-      list.appendChild(listItem)
-      range.insertNode(list)
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        // Convert existing block to list item
+        listItem.innerHTML = blockElement.innerHTML || '列表项<wbr>'
+        list.appendChild(listItem)
+        
+        // Replace the block element with the list
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(list, blockElement)
+        }
+      } else {
+        // Create new list
+        listItem.innerHTML = '列表项<wbr>'
+        list.appendChild(listItem)
+        
+        if (this.$refs.editorContent.children.length === 0) {
+          this.$refs.editorContent.appendChild(list)
+        } else {
+          range.insertNode(list)
+        }
+      }
       
-      // Set cursor in list item
-      const newRange = document.createRange()
-      newRange.selectNodeContents(listItem)
-      selection.removeAllRanges()
-      selection.addRange(newRange)
-      
+      // Restore cursor position
+      this.restoreCursorPosition()
       this.debouncedConvertToMarkdown()
     },
 
     // Insert link - vditor inspired
     insertLink() {
       const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
       const selectedText = selection.toString()
       
       const url = prompt('请输入链接地址:')
       if (!url) return
       
-      const linkText = selectedText || prompt('请输入链接文本:') || '链接文本'
       const link = document.createElement('a')
       link.href = url
-      link.textContent = linkText
       
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0)
-        if (selectedText) {
-          range.deleteContents()
-        }
+      if (selectedText) {
+        // Has selection - use selected text as link text
+        link.textContent = selectedText
+        range.deleteContents()
         range.insertNode(link)
         
         // Set cursor after link
@@ -1024,6 +1118,27 @@ export default {
         newRange.collapse(true)
         selection.removeAllRanges()
         selection.addRange(newRange)
+      } else {
+        // No selection - prompt for link text or use ZWSP
+        const linkText = prompt('请输入链接文本:') || '\u200b'
+        link.textContent = linkText
+        range.insertNode(link)
+        
+        if (linkText === '\u200b') {
+          // Position cursor inside the link
+          const newRange = document.createRange()
+          newRange.setStart(link.firstChild, 1)
+          newRange.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+        } else {
+          // Set cursor after link
+          const newRange = document.createRange()
+          newRange.setStartAfter(link)
+          newRange.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+        }
       }
       
       this.debouncedConvertToMarkdown()
@@ -1059,32 +1174,47 @@ export default {
 
     // Insert code block - vditor inspired
     insertCodeBlock() {
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString()
+      
       const language = prompt('请输入代码语言 (可选):') || ''
-      const code = prompt('请输入代码内容:') || 'console.log("Hello World")'
+      const defaultCode = selectedText || 'console.log("Hello World")'
+      const codeContent = selectedText ? selectedText : prompt('请输入代码内容:', defaultCode) || defaultCode
       
       const pre = document.createElement('pre')
-      pre.setAttribute('data-block', '0')
-      
       const codeElement = document.createElement('code')
+      
       if (language) {
         codeElement.className = `language-${language}`
       }
-      codeElement.textContent = code
-      
+      codeElement.textContent = codeContent
       pre.appendChild(codeElement)
       
-      const selection = window.getSelection()
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0)
-        range.insertNode(pre)
-        
-        // Set cursor after code block
-        const newRange = document.createRange()
-        newRange.setStartAfter(pre)
-        newRange.collapse(true)
-        selection.removeAllRanges()
-        selection.addRange(newRange)
+      // Clear selection if text was selected
+      if (selectedText) {
+        range.deleteContents()
       }
+      
+      // Insert the code block
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      if (blockElement && blockElement !== this.$refs.editorContent && blockElement.innerHTML.trim() === '') {
+        // Replace empty block with code block
+        blockElement.parentNode.replaceChild(pre, blockElement)
+      } else {
+        // Insert code block at cursor position
+        range.insertNode(pre)
+      }
+      
+      // Position cursor after code block
+      const newRange = document.createRange()
+      newRange.setStartAfter(pre)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
       
       this.debouncedConvertToMarkdown()
     }
