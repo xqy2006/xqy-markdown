@@ -15,6 +15,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "katex": "^0.16.0",
+    "lucide-vue-next": "^0.535.0",
     "markdown-it": "^13.0.1",
     "markdown-it-emoji": "^2.0.2",
     "markdown-it-footnote": "^3.0.3",
