@@ -494,7 +494,7 @@ export default {
         } else {
           // Convert to blockquote
           const blockquote = document.createElement('blockquote')
-          blockquote.innerHTML = blockElement.innerHTML || '引用内容'
+          blockquote.innerHTML = blockElement.innerHTML || '引用内容<wbr>'
           blockElement.parentNode.replaceChild(blockquote, blockElement)
         }
         
@@ -860,53 +860,39 @@ export default {
         element.style.cssText += 'font-weight: normal !important; font-style: normal !important; text-decoration: none !important; background: transparent !important; color: inherit !important;'
         element.classList.add('markdown-indicators-active')
         
-        // Create editable indicator spans with improved editability - following vditor patterns
+        // Create editable indicator spans with improved editability
         const startSpan = document.createElement('span')
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
-        startSpan.setAttribute('contenteditable', 'true')
-        startSpan.setAttribute('data-marker', 'start')
-        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important; display: inline !important;'
+        startSpan.contentEditable = 'true'
+        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
-        endSpan.setAttribute('contenteditable', 'true')
-        endSpan.setAttribute('data-marker', 'end')
-        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important; display: inline !important;'
+        endSpan.contentEditable = 'true'
+        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
         
         // Prevent conversion while editing indicators
-        const preventConversion = () => {
+        startSpan.addEventListener('focus', () => {
           this.preventConversion = true
-          this.isConverting = false
-        }
+        })
+        endSpan.addEventListener('focus', () => {
+          this.preventConversion = true
+        })
         
-        const allowConversion = () => {
-          this.preventConversion = false
-          // Sync changes after editing
-          setTimeout(() => {
-            if (!this.preventConversion) {
-              this.debouncedConvertToMarkdown()
-            }
-          }, 100)
-        }
-        
-        // Enhanced event listeners for better editing experience
-        startSpan.addEventListener('focus', preventConversion)
-        endSpan.addEventListener('focus', preventConversion)
+        // Add event listeners for indicator editing with improved handling
         startSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'start'))
         endSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'end'))
         startSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'start'))
         endSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'end'))
-        startSpan.addEventListener('blur', allowConversion)
-        endSpan.addEventListener('blur', allowConversion)
-        
-        // Make indicators selectable by preventing parent's pointer events
-        startSpan.addEventListener('mousedown', (e) => {
-          e.stopPropagation()
+        startSpan.addEventListener('blur', () => {
+          this.preventConversion = false
+          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
         })
-        endSpan.addEventListener('mousedown', (e) => {
-          e.stopPropagation()
+        endSpan.addEventListener('blur', () => {
+          this.preventConversion = false
+          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
         })
         
         // Insert indicators
@@ -2583,15 +2569,16 @@ export default {
         
         // Get current content, removing wbr for clean content
         let content = blockElement.innerHTML
-        const wbrElements = blockElement.querySelectorAll('wbr')
-        if (wbrElements.length > 0) {
-          wbrElements.forEach(el => el.remove())
+        const wbr = blockElement.querySelector('wbr')
+        if (wbr) {
+          // Remember wbr position before removing it
+          wbr.remove()
         }
         
         // Create new heading
-        const heading = document.createElement('h' + level)
+        const heading = document.createElement(`h${level}`)
         // Preserve content or set default text
-        heading.innerHTML = content.trim() || ('标题 ' + level)
+        heading.innerHTML = content.trim() || `标题 ${level}<wbr>`
         
         // Replace the old element with the new heading
         if (blockElement.parentNode) {
@@ -2606,7 +2593,50 @@ export default {
     },
 
     // Insert list - vditor inspired
-    insertList(type) {},
+    insertList(type) {
+      // Restore selection first
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      // If no block element, try to find from cursor position
+      if (!blockElement && range.startContainer.nodeType === Node.ELEMENT_NODE) {
+        blockElement = range.startContainer.childNodes[range.startOffset]
+      }
+      
+      // Create the list structure
+      const list = document.createElement(type)
+      const listItem = document.createElement('li')
+      
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        // Convert existing block to list item
+        listItem.innerHTML = blockElement.innerHTML || '列表项<wbr>'
+        list.appendChild(listItem)
+        
+        // Replace the block element with the list
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(list, blockElement)
+        }
+      } else {
+        // Create new list
+        listItem.innerHTML = '列表项<wbr>'
+        list.appendChild(listItem)
+        
+        if (this.$refs.editorContent.children.length === 0) {
+          this.$refs.editorContent.appendChild(list)
+        } else {
+          range.insertNode(list)
+        }
+      }
+      
+      // Restore cursor position
+      this.restoreCursorPosition()
+      this.debouncedConvertToMarkdown()
+    },
 
     // Insert link - vditor inspired
     // Insert link - vditor style with inline editing
@@ -2683,16 +2713,13 @@ export default {
       const range = selection.getRangeAt(0)
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      // Check if we're already in a code block - vditor pattern
-      const existingCodeBlock = this.getClosestElement(range.startContainer, 'DIV[data-type="code-block"]')
+      // Check if we're already in a code block
+      const existingCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
       if (existingCodeBlock) {
-        // Toggle code block to paragraph (vditor behavior)
+        // Convert code block back to paragraph
         const p = document.createElement('p')
         p.setAttribute('data-block', '0')
-        const textContent = existingCodeBlock.querySelector('code')?.textContent || ''
-        // Remove language indicator if present
-        const cleanContent = textContent.replace(/^语言\n?/, '').trim()  
-        p.innerHTML = cleanContent || '<br>'
+        p.innerHTML = existingCodeBlock.textContent || '<br>'
         existingCodeBlock.parentNode.replaceChild(p, existingCodeBlock)
         
         // Set cursor in paragraph
@@ -2711,161 +2738,51 @@ export default {
       }
       
       // Create vditor-style code block structure
-      const codeBlockDiv = document.createElement('div')
-      codeBlockDiv.className = 'vditor-wysiwyg__block'
-      codeBlockDiv.setAttribute('data-type', 'code-block')
-      codeBlockDiv.setAttribute('data-block', '0')
-      codeBlockDiv.setAttribute('data-marker', '```')
-      
       const pre = document.createElement('pre')
+      pre.setAttribute('data-block', '0')
+      pre.style.cssText = 'margin: 0 0 16px 0; padding: 16px; background: #f6f8fa; border-radius: 6px; border: 1px solid #d0d7de; overflow-x: auto; font-family: "SF Mono", Monaco, Inconsolata, "Roboto Mono", Consolas, "Courier New", monospace; font-size: 85%; line-height: 1.45;'
+      
       const codeElement = document.createElement('code')
+      codeElement.setAttribute('spellcheck', 'false')
+      codeElement.style.cssText = 'background: transparent !important; padding: 0 !important; border: none !important; border-radius: 0 !important; font-size: inherit; white-space: pre; word-break: normal; word-wrap: normal; color: #24292f;'
       
-      // Get selected text or use default
-      const selectedText = range.toString()
-      
-      if (selectedText) {
-        codeElement.textContent = selectedText
-        range.deleteContents()
-      } else {
-        // Start with placeholder text for language like vditor
-        codeElement.innerHTML = '语言'
-      }
-      
+      // Start with placeholder text for language selection like vditor
+      codeElement.textContent = '语言\n'
       pre.appendChild(codeElement)
-      codeBlockDiv.appendChild(pre)
       
-      // Insert the code block
       if (blockElement && blockElement !== this.$refs.editorContent) {
-        blockElement.parentNode.replaceChild(codeBlockDiv, blockElement)
+        // Replace current block
+        blockElement.parentNode.replaceChild(pre, blockElement)
       } else {
-        range.insertNode(codeBlockDiv)
+        // Insert at cursor position  
+        range.deleteContents()
+        range.insertNode(pre)
       }
       
-      // Add proper event handlers following vditor patterns
-      this.setupCodeBlockHandlers(codeBlockDiv, codeElement)
+      // Set cursor after "语言" for immediate editing (vditor pattern)
+      const newRange = document.createRange()
+      const textNode = codeElement.firstChild
+      if (textNode) {
+        newRange.setStart(textNode, 2) // After "语言"
+        newRange.setEnd(textNode, 2)
+      }
+      selection.removeAllRanges()  
+      selection.addRange(newRange)
       
-      // Set cursor position using wbr marker (vditor pattern)
-      this.setRangeByWbr()
+      // Add proper event handlers for code block editing
+      this.setupCodeBlockHandlers(pre, codeElement)
       
       this.debouncedConvertToMarkdown()
     },
 
     // Setup code block event handlers - complete vditor compliance
-    setupCodeBlockHandlers(codeBlockDiv, codeElement) {
+    setupCodeBlockHandlers(pre, codeElement) {
       // Handle all keyboard events within code blocks
       codeElement.addEventListener('keydown', (event) => {
         const selection = window.getSelection()
-        const range = selection.getRangeAt(0)
         
         if (event.key === 'Enter') {
           event.preventDefault()
-          // Insert newline at cursor position (not new code block)
-          const textNode = document.createTextNode('\n')
-          range.insertNode(textNode)
-          range.setStartAfter(textNode)
-          range.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(range)
-          
-        } else if (event.key === 'Tab') {
-          event.preventDefault()
-          // Insert 2-space indentation (vditor pattern)
-          const textNode = document.createTextNode('  ')
-          range.insertNode(textNode)
-          range.setStartAfter(textNode)
-          range.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(range)
-          
-        } else if (event.key === 'Backspace') {
-          // Check if we're at the start of an empty code block
-          const text = codeElement.textContent
-          if (text === '语言\n' || text === '' || (range.startOffset === 0 && text.trim() === '')) {
-            event.preventDefault()
-            // Convert to paragraph
-            const p = document.createElement('p')
-            p.setAttribute('data-block', '0')
-            p.innerHTML = '<br>'
-            codeBlockDiv.parentNode.replaceChild(p, codeBlockDiv)
-            
-            // Set cursor in paragraph
-            const newRange = document.createRange()
-            newRange.setStart(p, 0)
-            newRange.collapse(true)
-            selection.removeAllRanges()
-            selection.addRange(newRange)
-            
-            this.debouncedConvertToMarkdown()
-            return
-          }
-        }
-        
-        // Trigger syntax highlighting after changes
-        setTimeout(() => this.highlightCodeBlock(codeElement), 10)
-      })
-      
-      // Handle paste events
-      codeElement.addEventListener('paste', (event) => {
-        setTimeout(() => this.highlightCodeBlock(codeElement), 10)
-      })
-      
-      // Initial syntax highlighting
-      setTimeout(() => this.highlightCodeBlock(codeElement), 10)
-    },
-    
-    // Highlight code block with language detection - vditor pattern
-    highlightCodeBlock(codeElement) {
-      if (!codeElement) return
-      
-      const text = codeElement.textContent
-      const lines = text.split('\n')
-      
-      // Check if first line is language indicator
-      let language = ''
-      let code = text
-      
-      if (lines[0] && lines[0] !== '语言' && lines[0].trim() && lines.length > 1) {
-        const firstLine = lines[0].trim()
-        // Common language identifiers
-        const languages = ['javascript', 'js', 'python', 'py', 'java', 'cpp', 'c', 'html', 'css', 'php', 'ruby', 'go', 'rust', 'typescript', 'ts', 'json', 'xml', 'sql', 'bash', 'shell', 'markdown', 'md']
-        if (languages.includes(firstLine.toLowerCase())) {
-          language = firstLine.toLowerCase()
-          code = lines.slice(1).join('\n')
-        }
-      }
-      
-      // Apply syntax highlighting if hljs is available
-      if (window.hljs && language && code.trim()) {
-        try {
-          const highlighted = window.hljs.highlight(code, { language }).value
-          codeElement.innerHTML = `<span style="color: #8b949e; font-size: 0.9em; opacity: 0.7;">${lines[0]}</span>\n${highlighted}`
-        } catch (e) {
-          // Fallback to auto detection
-          try {
-            const highlighted = window.hljs.highlightAuto(code).value
-            codeElement.innerHTML = `<span style="color: #8b949e; font-size: 0.9em; opacity: 0.7;">${lines[0]}</span>\n${highlighted}`
-          } catch (e2) {
-            // Plain text fallback
-            console.warn('Syntax highlighting failed:', e2)
-          }
-        }
-      }
-    },
-    
-    // Set cursor position by wbr marker (vditor pattern)
-    setRangeByWbr() {
-      const wbr = this.$refs.editorContent.querySelector('wbr')
-      if (wbr) {
-        const range = document.createRange()
-        range.setStartAfter(wbr)
-        range.collapse(true)
-        wbr.remove()
-        
-        const selection = window.getSelection()
-        selection.removeAllRanges()
-        selection.addRange(range)
-      }
-    },
           
           // Check if we're on the first line (language line)
           const range = selection.getRangeAt(0)
@@ -3150,37 +3067,34 @@ export default {
   margin: 0.25em 0;
 }
 
-/* Blockquote styling - Enhanced GitHub style with proper background */
+/* Blockquote styling - Fixed GitHub style */
 .vditor-wysiwyg blockquote {
-  margin: 0 0 16px 0 !important;
-  padding: 0 1em !important;
-  color: #656d76 !important;
-  border-left: 0.25em solid #d0d7de !important;
+  margin: 0 0 16px 0;
+  padding: 0 1em;
+  color: #656d76;
+  border-left: 0.25em solid #d0d7de;
   background: #f6f8fa !important;
-  border-radius: 0 6px 6px 0 !important;
+  border-radius: 0 6px 6px 0;
 }
 
 .vditor-wysiwyg blockquote p {
   margin-bottom: 0;
 }
 
-/* Code block styling - vditor-compliant GitHub style */
-.vditor-wysiwyg pre,
-.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] pre {
+/* Code block styling - GitHub style */
+.vditor-wysiwyg pre {
   margin: 0 0 16px 0;
   padding: 16px;
-  background: #f6f8fa !important;
+  background: #f6f8fa;
   border-radius: 6px;
   border: 1px solid #d0d7de;
   overflow-x: auto;
   font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 85%;
   line-height: 1.45;
-  color: #24292f;
 }
 
-.vditor-wysiwyg pre code,
-.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] pre code {
+.vditor-wysiwyg pre code {
   background: transparent !important;
   padding: 0 !important;
   border: none !important;
@@ -3189,23 +3103,17 @@ export default {
   white-space: pre;
   word-break: normal;
   word-wrap: normal;
-  color: #24292f;
 }
 
-/* vditor-style block wrapper */
-.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] {
-  margin: 0 0 16px 0;
-}
-
-/* Inline code styling - Enhanced with proper background */
+/* Inline code styling - Fixed with proper background */
 .vditor-wysiwyg code {
   background: rgba(175, 184, 193, 0.2) !important;
-  padding: 0.2em 0.4em !important;
-  border-radius: 6px !important;
-  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace !important;
-  font-size: 85% !important;
-  color: #24292f !important;
-  border: 1px solid rgba(175, 184, 193, 0.1) !important;
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 85%;
+  color: #24292f;
+  border: 1px solid rgba(175, 184, 193, 0.1);
 }
 
 /* Task list styling */
