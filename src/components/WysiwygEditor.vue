@@ -652,7 +652,6 @@ export default {
       
       this.debouncedConvertToMarkdown()
     },
-    },
 
     // Insert Tex symbol
     insertTexSymbol(startSymbol, endSymbol = '') {
