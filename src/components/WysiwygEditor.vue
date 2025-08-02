@@ -3075,11 +3075,6 @@ export default {
   background: transparent !important;
   color: inherit !important;
 }
-  font-size: 0.9em !important;
-  user-select: none !important;
-  opacity: 0.6 !important;
-  font-weight: normal !important;
-}
 
 .vditor-tooltipped {
   position: relative;
