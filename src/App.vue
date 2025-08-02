@@ -2,6 +2,26 @@
 <div class="markdown-body" style="margin-top: 15px;margin-inline-start: 15px;">
     <h1>markdown编辑器</h1>
 </div>
+
+<!-- Mode Switcher -->
+<div class="mode-switcher" style="margin: 10px 15px;">
+    <div class="BtnGroup">
+        <button 
+            class="btn btn-sm"
+            :class="{ 'btn-primary': editMode === 'split', 'btn-outline': editMode !== 'split' }"
+            @click="switchMode('split')"
+        >
+            <Eye :size="16" style="margin-right: 4px;" /> 分屏模式
+        </button>
+        <button 
+            class="btn btn-sm"
+            :class="{ 'btn-primary': editMode === 'wysiwyg', 'btn-outline': editMode !== 'wysiwyg' }"
+            @click="switchMode('wysiwyg')"
+        >
+            <Edit :size="16" style="margin-right: 4px;" /> 所见即所得
+        </button>
+    </div>
+</div>
 <div style="margin-top: 5px;white-space:nowrap;overflow-x: auto;overflow-y: hidden;">
     <td><a v-if="!mdup" style="margin-inline-start: 15px;" href="javascript:;" class="a-upload btn btn-primary btn-sm"><input type="file" accept=".md," ref="mdfile" @change="up_md()">上传markdown</a>
         <button v-if="mdup" style="margin-inline-start: 15px;" class="btn btn-primary btn-sm" aria-disabled="true"><span>Processing</span><span class="AnimatedEllipsis"></span></button></td>
@@ -37,7 +57,7 @@
     <span>{{ autoSaveStatus }}</span>
 </div>
 
-<div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+<div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;" v-if="editMode === 'split'">
     <div class="Box-header">
         <b>导出设置：</b>
         <div class="export-settings">
@@ -102,13 +122,23 @@
         </div>
     </div>
 </div>
-<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;">
+<div class="Box Box--blue" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;" v-if="editMode === 'split'">
     <div class="Box-header">
         <b>预览：</b>
     </div>
     <div class="markdown-body Box-row" id="mdcontent" ref="md">
         <div ref="exportContent" class="export-container" v-html="get_md(mdtext)">
         </div>
+    </div>
+</div>
+
+<!-- WYSIWYG Editor Mode -->
+<div class="Box" style="margin-inline-start: 15px;margin-inline-end: 15px;margin-top: 15px;" v-if="editMode === 'wysiwyg'">
+    <div class="Box-header">
+        <b>所见即所得编辑器：</b>
+    </div>
+    <div class="Box-row" style="padding: 5px 16px 16px;">
+        <WysiwygEditor v-model="mdtext" />
     </div>
 </div>
 </template>
@@ -325,17 +355,21 @@ import {
   Heading, Code, Code2, Image, Quote, List, CheckSquare, BookOpen, Minus, Sigma,
   Bold, Italic, Underline, Type, Highlighter, Strikethrough,
   Plus, Divide, X, SquareRadical, ArrowRight, ArrowUp, ArrowDown, 
-  Braces, Infinity, FunctionSquare, Eye, EyeOff,
+  Braces, Infinity, FunctionSquare, Eye, EyeOff, Edit,
   Hash, Triangle, CircleDot, Zap, Percent, RotateCcw
 } from 'lucide-vue-next'
+
+// Import WYSIWYG Editor component
+import WysiwygEditor from './components/WysiwygEditor.vue'
 
 export default {
     components: {
         Heading, Code, Code2, Image, Quote, List, CheckSquare, BookOpen, Minus, Sigma,
         Bold, Italic, Underline, Type, Highlighter, Strikethrough,
         Plus, Divide, X, SquareRadical, ArrowRight, ArrowUp, ArrowDown, 
-        Braces, Infinity, FunctionSquare, Eye, EyeOff,
-        Hash, Triangle, CircleDot, Zap, Percent, RotateCcw
+        Braces, Infinity, FunctionSquare, Eye, EyeOff, Edit,
+        Hash, Triangle, CircleDot, Zap, Percent, RotateCcw,
+        WysiwygEditor
     },
     data() {
         return {
@@ -354,6 +388,7 @@ export default {
             autoSaveStatus: '', // 状态提示
             autoSaveTimer: null, // 自动保存定时器
             isInitializing: true, // 新增：标记是否正在初始化
+            editMode: 'split' // 新增：编辑模式 ('split' 或 'wysiwyg')
         }
     },
     created(){
@@ -403,6 +438,15 @@ export default {
     },
 
     methods: {
+        // Switch between edit modes
+        switchMode(mode) {
+            this.editMode = mode
+            // Save the current state when switching modes
+            if (!this.isInitializing) {
+                this.saveToStorage()
+            }
+        },
+        
         get_filename(){
             return this.filename
         },
