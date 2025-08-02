@@ -317,6 +317,7 @@
       @focus="handleFocus"
       @blur="handleBlur"
       @click="handleClick"
+      @selectstart="handleSelectionChange"
       @compositionstart="handleCompositionStart"
       @compositionend="handleCompositionEnd"
       v-html="htmlContent"
@@ -359,6 +360,7 @@ export default {
       debounceTimer: null,
       composingLock: false,
       preventInput: false,
+      preventConversion: false,
       savedSelection: null, // Store selection when focus is lost
       showTexToolbox: false, // Toggle for Tex toolbox
       markdownIndicatorsVisible: false, // Track if markdown indicators are shown
@@ -882,16 +884,23 @@ export default {
       }
     },
     
-    // Handle markdown indicator editing
+    // Handle markdown indicator editing - vditor compliant
     handleIndicatorEdit(event, element, position) {
       const indicator = event.target
-      const newIndicator = indicator.textContent
+      const newIndicator = indicator.textContent.trim()
       
       // If the indicator is cleared, remove the formatting
-      if (!newIndicator.trim()) {
+      if (!newIndicator) {
         this.removeFormattingFromElement(element)
+        // Force markdown conversion to sync changes
+        this.$nextTick(() => {
+          this.convertAndEmit()
+        })
         return
       }
+      
+      // Prevent conversion while editing indicators
+      this.preventConversion = true
       
       // Update the element based on the new indicator
       const tagName = element.tagName.toLowerCase()
@@ -906,6 +915,12 @@ export default {
       } else if (newIndicator === '`' && tagName !== 'code') {
         this.changeElementFormatting(element, 'code')
       }
+      
+      // Force markdown sync after indicator change
+      setTimeout(() => {
+        this.preventConversion = false
+        this.convertAndEmit()
+      }, 50)
     },
     
     // Remove formatting from element
@@ -1417,10 +1432,10 @@ export default {
 
       this.debouncedConvertToMarkdown()
       
-      // Show markdown indicators after input processing
-      setTimeout(() => {
+      // Show markdown indicators immediately after input - no delay needed
+      this.$nextTick(() => {
         this.showMarkdownIndicatorsAtCursor()
-      }, 100)
+      })
     },
 
     // Process markdown input for real-time conversion
@@ -1636,8 +1651,15 @@ export default {
         const level = headingMatch[1].length
         const content = headingMatch[2] || `标题 ${level}`
         
+        // Check if we're already the right heading level to avoid unnecessary conversions
+        const expectedTag = `h${level}`
+        if (blockElement.tagName.toLowerCase() === expectedTag) {
+          return // Already correct heading level
+        }
+        
         // Create heading element
-        const heading = document.createElement(`h${level}`)
+        const heading = document.createElement(expectedTag)
+        heading.setAttribute('data-block', '0')
         heading.textContent = content
         
         // Replace paragraph with heading
@@ -1646,17 +1668,22 @@ export default {
           
           // Position cursor at end of heading
           const newRange = document.createRange()
-          newRange.selectNodeContents(heading)
-          newRange.collapse(false)
+          if (heading.firstChild) {
+            newRange.setStart(heading.firstChild, content.length)
+          } else {
+            newRange.setStart(heading, 0)
+          }
+          newRange.collapse(true)
           
           const selection = window.getSelection()
           selection.removeAllRanges()
           selection.addRange(newRange)
           
-          // Prevent the debounced conversion from interfering
+          // Clear any conversion flags and force immediate conversion
+          this.preventConversion = false
           setTimeout(() => {
             this.debouncedConvertToMarkdown()
-          }, 100)
+          }, 50)
         }
         return
       }
@@ -2001,19 +2028,33 @@ export default {
             // Convert heading to paragraph
             event.preventDefault()
             const p = document.createElement('p')
-            p.innerHTML = blockElement.innerHTML
+            p.setAttribute('data-block', '0')
+            p.innerHTML = blockElement.innerHTML || '<br>'
             blockElement.parentNode.replaceChild(p, blockElement)
             
             // Set cursor at beginning of new paragraph
             const newRange = document.createRange()
-            newRange.setStart(p, 0)
+            if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
+              newRange.setStart(p.firstChild, 0)
+            } else {
+              newRange.setStart(p, 0)
+            }
             newRange.collapse(true)
             selection.removeAllRanges()
             selection.addRange(newRange)
             
+            // Force markdown sync and ensure real-time rendering works after deletion
             this.debouncedConvertToMarkdown()
+            return
           }
         }
+        
+        // For any other backspace, ensure proper re-rendering after deletion
+        setTimeout(() => {
+          // Clear any conversion locks and force re-render
+          this.preventConversion = false
+          this.debouncedConvertToMarkdown()
+        }, 10)
       }
     },
 
@@ -2210,8 +2251,23 @@ export default {
     },
 
     // Handle keyup events
-    handleKeyup() {
+    handleKeyup(event) {
+      // Show markdown indicators for cursor navigation keys
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+        this.$nextTick(() => {
+          this.showMarkdownIndicatorsAtCursor()
+        })
+      }
+      
       this.debouncedConvertToMarkdown()
+    },
+
+    // Handle selection change to show indicators during keyboard navigation
+    handleSelectionChange() {
+      // Use a small delay to allow selection to stabilize
+      setTimeout(() => {
+        this.showMarkdownIndicatorsAtCursor()
+      }, 10)
     },
 
     // Handle focus events
@@ -2248,6 +2304,8 @@ export default {
 
     // Convert content and emit to parent - enhanced
     convertAndEmit() {
+      if (this.preventConversion) return
+      
       this.isConverting = true
       const markdown = this.convertToMarkdown()
       this.$emit('update:modelValue', markdown)
@@ -2487,6 +2545,7 @@ export default {
 
     // Insert code block - vditor inspired
     // Insert code block - vditor style without browser dialogs
+    // Insert code block - vditor compliant implementation
     insertCodeBlock() {
       this.restoreSavedSelection()
       
@@ -2496,15 +2555,14 @@ export default {
       const range = selection.getRangeAt(0)
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      // Create code block structure
+      // Create vditor-style code block structure
       const pre = document.createElement('pre')
-      pre.setAttribute('data-type', 'code-block')
+      pre.setAttribute('data-block', '0')
       const codeElement = document.createElement('code')
       
-      // Default placeholder content that user can edit
-      codeElement.textContent = 'console.log("Hello World")'
-      codeElement.setAttribute('contenteditable', 'true')
-      codeElement.style.cssText = 'display: block; background: #f6f8fa; padding: 16px; border-radius: 6px; font-family: monospace; font-size: 85%; line-height: 1.45; white-space: pre; overflow-x: auto; color: #24292f; border: 1px solid #d0d7de; min-height: 60px;'
+      // Start with empty content like vditor
+      codeElement.textContent = ''
+      codeElement.setAttribute('spellcheck', 'false')
       pre.appendChild(codeElement)
       
       if (blockElement && blockElement !== this.$refs.editorContent) {
@@ -2512,20 +2570,92 @@ export default {
         blockElement.parentNode.replaceChild(pre, blockElement)
       } else {
         // Insert at cursor position  
+        range.deleteContents()
         range.insertNode(pre)
       }
       
-      // Position cursor inside code block and select all content for easy editing
+      // Set cursor inside code block for immediate editing (vditor pattern)
       const newRange = document.createRange()
-      newRange.selectNodeContents(codeElement)
+      if (codeElement.firstChild) {
+        newRange.setStart(codeElement.firstChild, 0)
+      } else {
+        // Create text node if empty
+        const textNode = document.createTextNode('')
+        codeElement.appendChild(textNode)
+        newRange.setStart(textNode, 0)
+      }
+      newRange.collapse(true)
       selection.removeAllRanges()
       selection.addRange(newRange)
       
-      // Focus the code element for immediate editing
-      codeElement.focus()
+      // Add proper event handlers for code block editing
+      this.setupCodeBlockHandlers(codeElement)
       
       this.debouncedConvertToMarkdown()
-    }
+    },
+
+    // Setup code block event handlers - vditor style
+    setupCodeBlockHandlers(codeElement) {
+      // Handle Enter key properly within code blocks
+      codeElement.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          // Insert newline character instead of creating new elements
+          const selection = window.getSelection()
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0)
+            const textNode = document.createTextNode('\n')
+            range.insertNode(textNode)
+            range.setStartAfter(textNode)
+            range.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+        } else if (event.key === 'Tab') {
+          event.preventDefault()
+          // Insert tab character
+          const selection = window.getSelection()
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0)
+            const textNode = document.createTextNode('  ') // 2 spaces for tab
+            range.insertNode(textNode)
+            range.setStartAfter(textNode)
+            range.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+        } else if (event.key === 'Backspace') {
+          // Handle code block deletion
+          const selection = window.getSelection()
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0)
+            if (range.startOffset === 0 && codeElement.textContent === '') {
+              // Delete empty code block
+              event.preventDefault()
+              const pre = codeElement.closest('pre')
+              if (pre) {
+                const p = document.createElement('p')
+                p.setAttribute('data-block', '0')
+                p.innerHTML = '<br>'
+                pre.parentNode.replaceChild(p, pre)
+                
+                // Set cursor in new paragraph
+                const newRange = document.createRange()
+                newRange.setStart(p, 0)
+                newRange.collapse(true)
+                selection.removeAllRanges()
+                selection.addRange(newRange)
+              }
+            }
+          }
+        }
+      })
+      
+      // Handle input for language detection and highlighting
+      codeElement.addEventListener('input', () => {
+        this.debouncedConvertToMarkdown()
+      })
+    },
   }
 }
 </script>
@@ -2798,26 +2928,8 @@ export default {
   line-height: 1.45;
 }
 
-.vditor-wysiwyg code {
-  background: rgba(175, 184, 193, 0.2);
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 85%;
-}
 
-.vditor-wysiwyg pre code {
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
-}
 
-.vditor-wysiwyg blockquote {
-  margin: 0 0 16px 0;
-  padding: 0 1em;
-  color: #656d76;
-  border-left: 0.25em solid #d0d7de;
-}
 
 .vditor-wysiwyg a {
   color: #0969da;
