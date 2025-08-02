@@ -865,13 +865,13 @@ export default {
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
         startSpan.contentEditable = 'true'
-        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important;'
+        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.2) !important; border-radius: 2px; padding: 1px 3px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important; display: inline-block !important; border: 1px solid rgba(175,184,193,0.3); min-width: 1em; text-align: center;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
         endSpan.contentEditable = 'true'
-        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important;'
+        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.2) !important; border-radius: 2px; padding: 1px 3px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important; display: inline-block !important; border: 1px solid rgba(175,184,193,0.3); min-width: 1em; text-align: center;'
         
         // Enhanced event handling for proper selectability
         const preventConversionHandler = () => {
@@ -883,13 +883,46 @@ export default {
           setTimeout(() => this.debouncedConvertToMarkdown(), 100)
         }
         
-        // Make indicators properly selectable with mousedown handling
-        startSpan.addEventListener('mousedown', (e) => {
-          e.stopPropagation()
-        })
-        endSpan.addEventListener('mousedown', (e) => {
-          e.stopPropagation()
-        })
+        // Make indicators properly selectable - enhanced approach
+        const makeIndicatorSelectable = (span) => {
+          span.addEventListener('mousedown', (e) => {
+            e.stopPropagation()
+            // Ensure the span can be selected
+            span.setAttribute('tabindex', '0')
+            setTimeout(() => {
+              span.focus()
+              // Select all text in the indicator
+              const range = document.createRange()
+              range.selectNodeContents(span)
+              const selection = window.getSelection()
+              selection.removeAllRanges()
+              selection.addRange(range)
+            }, 0)
+          })
+          
+          span.addEventListener('click', (e) => {
+            e.stopPropagation()
+            // Select text on click
+            const range = document.createRange()
+            range.selectNodeContents(span)
+            const selection = window.getSelection()
+            selection.removeAllRanges()
+            selection.addRange(range)
+          })
+          
+          span.addEventListener('dblclick', (e) => {
+            e.stopPropagation()
+            // Select all on double click
+            const range = document.createRange()
+            range.selectNodeContents(span)
+            const selection = window.getSelection()
+            selection.removeAllRanges()
+            selection.addRange(range)
+          })
+        }
+        
+        makeIndicatorSelectable(startSpan)
+        makeIndicatorSelectable(endSpan)
         
         // Prevent conversion while editing indicators
         startSpan.addEventListener('focus', preventConversionHandler)
@@ -2715,6 +2748,7 @@ export default {
     // Insert code block - vditor inspired
     // Insert code block - vditor style without browser dialogs
     // Insert code block - vditor compliant implementation
+    // Insert code block - completely rewritten following vditor patterns
     insertCodeBlock() {
       this.restoreSavedSelection()
       
@@ -2724,20 +2758,17 @@ export default {
       const range = selection.getRangeAt(0)
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      // Check if we're already in a vditor-style code block
-      const existingVditorCodeBlock = this.getClosestElement(range.startContainer, 'DIV[data-type="code-block"]')
-      const existingPreCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
-      
-      if (existingVditorCodeBlock || existingPreCodeBlock) {
+      // Check if we're already in a code block
+      const existingCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
+      if (existingCodeBlock) {
         // Convert code block back to paragraph (toggle functionality)
-        const codeBlock = existingVditorCodeBlock || existingPreCodeBlock
         const p = document.createElement('p')
         p.setAttribute('data-block', '0')
-        const codeContent = codeBlock.querySelector('code')?.textContent || codeBlock.textContent || ''
-        p.textContent = codeContent.replace(/^语言\n?/, '').trim() || ''
+        const codeContent = existingCodeBlock.textContent || ''
+        p.textContent = codeContent.trim() || ''
         if (!p.textContent) p.innerHTML = '<br>'
         
-        codeBlock.parentNode.replaceChild(p, codeBlock)
+        existingCodeBlock.parentNode.replaceChild(p, existingCodeBlock)
         
         // Set cursor in paragraph
         const newRange = document.createRange()
@@ -2754,91 +2785,35 @@ export default {
         return
       }
       
-      // Create vditor-compliant code block structure
-      const codeBlockDiv = document.createElement('div')
-      codeBlockDiv.className = 'vditor-wysiwyg__block'
-      codeBlockDiv.setAttribute('data-type', 'code-block')
-      codeBlockDiv.setAttribute('data-block', '0')
-      
+      // Create simple code block structure
       const pre = document.createElement('pre')
-      const codeElement = document.createElement('code')
-      codeElement.setAttribute('spellcheck', 'false')
+      const code = document.createElement('code')
+      code.setAttribute('spellcheck', 'false')
+      code.contentEditable = 'true'
       
-      // Start with language placeholder like vditor
-      codeElement.textContent = '语言\n'
+      // Start with language placeholder
+      code.textContent = 'javascript\nconsole.log("Hello World");'
       
-      pre.appendChild(codeElement)
-      codeBlockDiv.appendChild(pre)
+      pre.appendChild(code)
       
       if (blockElement && blockElement !== this.$refs.editorContent) {
         // Replace current block
-        blockElement.parentNode.replaceChild(codeBlockDiv, blockElement)
+        blockElement.parentNode.replaceChild(pre, blockElement)
       } else {
         // Insert at cursor position  
         range.deleteContents()
-        range.insertNode(codeBlockDiv)
+        range.insertNode(pre)
       }
       
-      // Enhanced keyboard event handling for vditor-style behavior
-      codeElement.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          // Insert line break within code block (not new block)
-          const selection = window.getSelection()
-          const range = selection.getRangeAt(0)
-          const textNode = document.createTextNode('\n')
-          range.insertNode(textNode)
-          range.setStartAfter(textNode)
-          range.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(range)
-        } else if (event.key === 'Tab') {
-          event.preventDefault()
-          // Insert 2-space indentation
-          const selection = window.getSelection()
-          const range = selection.getRangeAt(0)
-          const textNode = document.createTextNode('  ')
-          range.insertNode(textNode)
-          range.setStartAfter(textNode)
-          range.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(range)
-        } else if (event.key === 'Backspace') {
-          const text = codeElement.textContent
-          const selection = window.getSelection()
-          const range = selection.getRangeAt(0)
-          
-          // Convert to paragraph if empty or only has language placeholder
-          if ((text === '语言\n' || text.trim() === '语言' || !text.trim()) && range.startOffset === 0) {
-            event.preventDefault()
-            const p = document.createElement('p')
-            p.setAttribute('data-block', '0')
-            p.innerHTML = '<br>'
-            codeBlockDiv.parentNode.replaceChild(p, codeBlockDiv)
-            
-            const newRange = document.createRange()
-            newRange.setStart(p, 0)
-            newRange.collapse(true)
-            selection.removeAllRanges()
-            selection.addRange(newRange)
-            
-            this.debouncedConvertToMarkdown()
-          }
-        }
-      })
-      
-      // Set cursor after "语言" for immediate editing (vditor pattern)
+      // Set cursor after language for immediate editing
       const newRange = document.createRange()
-      const textNode = codeElement.firstChild
+      const textNode = code.firstChild
       if (textNode) {
-        newRange.setStart(textNode, 2) // After "语言"
-        newRange.setEnd(textNode, 2)
+        newRange.setStart(textNode, 10) // After "javascript"
+        newRange.setEnd(textNode, 10)
       }
       selection.removeAllRanges()  
       selection.addRange(newRange)
-      
-      // Add proper event handlers for code block editing
-      this.setupCodeBlockHandlers(pre, codeElement)
       
       this.debouncedConvertToMarkdown()
     },
