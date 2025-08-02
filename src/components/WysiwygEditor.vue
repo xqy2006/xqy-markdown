@@ -368,9 +368,27 @@ export default {
   },
   watch: {
     modelValue: {
-      handler(newValue) {
+      handler(newValue, oldValue) {
         if (!this.isConverting) {
-          this.htmlContent = this.markdownToHtml(newValue)
+          // Check if content was cleared (empty value from parent)
+          if (!newValue && oldValue && this.htmlContent) {
+            // Clear the editor content when parent clears
+            this.htmlContent = '<p><br></p>'
+            this.$refs.editorContent.innerHTML = '<p><br></p>'
+            
+            // Position cursor at start
+            setTimeout(() => {
+              const range = document.createRange()
+              const selection = window.getSelection()
+              range.setStart(this.$refs.editorContent.firstChild, 0)
+              range.collapse(true)
+              selection.removeAllRanges()
+              selection.addRange(range)
+            }, 10)
+          } else {
+            // Normal content update
+            this.htmlContent = this.markdownToHtml(newValue)
+          }
         }
       },
       immediate: true
@@ -383,7 +401,7 @@ export default {
       this.restoreSavedSelection()
     },
 
-    // Cycle through heading levels (like split mode)
+    // Cycle through heading levels (like split mode) - including normal text
     cycleHeading() {
       this.restoreSavedSelection()
       
@@ -399,16 +417,57 @@ export default {
         return
       }
       
-      // Check current heading level
+      // Check current heading level or paragraph
       const currentTag = blockElement.tagName.toLowerCase()
-      let newLevel = 1
       
       if (currentTag.match(/^h[1-6]$/)) {
         const currentLevel = parseInt(currentTag.charAt(1))
-        newLevel = currentLevel >= 6 ? 1 : currentLevel + 1 // Cycle H1->H6->H1
+        if (currentLevel < 6) {
+          // H1-H5 -> next heading level
+          this.formatHeading(currentLevel + 1)
+        } else {
+          // H6 -> normal paragraph
+          this.convertToNormal(blockElement, range)
+        }
+      } else {
+        // Currently normal text (P, DIV, etc) -> convert to H1
+        this.formatHeading(1)
+      }
+    },
+
+    // Convert block element to normal paragraph
+    convertToNormal(blockElement, range) {
+      const paragraph = document.createElement('p')
+      paragraph.setAttribute('data-block', '0')
+      
+      // Preserve content or ensure it has content
+      const content = blockElement.textContent.trim()
+      if (content) {
+        paragraph.textContent = content
+      } else {
+        paragraph.innerHTML = '<br>'
       }
       
-      this.formatHeading(newLevel)
+      // Replace the block element
+      if (blockElement.parentNode) {
+        blockElement.parentNode.replaceChild(paragraph, blockElement)
+        
+        // Position cursor appropriately
+        const newRange = document.createRange()
+        if (content) {
+          newRange.selectNodeContents(paragraph)
+          newRange.collapse(false)
+        } else {
+          newRange.setStart(paragraph, 0)
+          newRange.collapse(true)
+        }
+        
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
+      
+      this.debouncedConvertToMarkdown()
     },
 
     // Insert blockquote
@@ -819,6 +878,28 @@ export default {
         }
       })
     },
+
+    // Show markdown indicators at cursor position after input
+    showMarkdownIndicatorsAtCursor() {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      if (!range.collapsed) return // Only show for cursor position, not selection
+      
+      // Find the formatted element at cursor position
+      let element = range.startContainer
+      if (element.nodeType === Node.TEXT_NODE) {
+        element = element.parentElement
+      }
+      
+      // Check if cursor is inside a formatted element
+      const formattedElement = this.getClosestFormattedElement(element)
+      if (formattedElement) {
+        this.showMarkdownIndicators(formattedElement)
+      }
+    },
+
     // Convert Markdown to HTML using parent's markdown renderer
     markdownToHtml(markdown) {
       if (!markdown) return '<p><br></p>'
@@ -1261,6 +1342,11 @@ export default {
       this.cleanupWbrElements()
 
       this.debouncedConvertToMarkdown()
+      
+      // Show markdown indicators after input processing
+      setTimeout(() => {
+        this.showMarkdownIndicatorsAtCursor()
+      }, 100)
     },
 
     // Process markdown input for real-time conversion
@@ -2327,51 +2413,56 @@ export default {
     },
 
     // Insert code block - vditor inspired
+    // Insert code block - vditor style without browser dialogs
     insertCodeBlock() {
-      // Restore selection first
       this.restoreSavedSelection()
       
       const selection = window.getSelection()
       if (selection.rangeCount === 0) return
       
       const range = selection.getRangeAt(0)
-      const selectedText = selection.toString()
-      
-      const language = prompt('请输入代码语言 (可选):') || ''
-      const defaultCode = selectedText || 'console.log("Hello World")'
-      const codeContent = selectedText ? selectedText : prompt('请输入代码内容:', defaultCode) || defaultCode
-      
-      const pre = document.createElement('pre')
-      const codeElement = document.createElement('code')
-      
-      if (language) {
-        codeElement.className = `language-${language}`
-      }
-      codeElement.textContent = codeContent
-      pre.appendChild(codeElement)
-      
-      // Clear selection if text was selected
-      if (selectedText) {
-        range.deleteContents()
-      }
-      
-      // Insert the code block
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      if (blockElement && blockElement !== this.$refs.editorContent && blockElement.innerHTML.trim() === '') {
-        // Replace empty block with code block
+      // Create code block structure
+      const pre = document.createElement('pre')
+      pre.setAttribute('data-type', 'code-block')
+      const codeElement = document.createElement('code')
+      
+      // Default placeholder content that user can edit
+      codeElement.textContent = 'console.log("Hello World")'
+      codeElement.setAttribute('contenteditable', 'true')
+      codeElement.style.cssText = `
+        display: block;
+        background: #f6f8fa;
+        padding: 16px;
+        border-radius: 6px;
+        font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 85%;
+        line-height: 1.45;
+        white-space: pre;
+        overflow-x: auto;
+        color: #24292f;
+        border: 1px solid #d0d7de;
+        min-height: 60px;
+      `
+      pre.appendChild(codeElement)
+      
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        // Replace current block
         blockElement.parentNode.replaceChild(pre, blockElement)
       } else {
-        // Insert code block at cursor position
+        // Insert at cursor position  
         range.insertNode(pre)
       }
       
-      // Position cursor after code block
+      // Position cursor inside code block and select all content for easy editing
       const newRange = document.createRange()
-      newRange.setStartAfter(pre)
-      newRange.collapse(true)
+      newRange.selectNodeContents(codeElement)
       selection.removeAllRanges()
       selection.addRange(newRange)
+      
+      // Focus the code element for immediate editing
+      codeElement.focus()
       
       this.debouncedConvertToMarkdown()
     }
@@ -2501,6 +2592,121 @@ export default {
 
 .vditor-wysiwyg li {
   margin: 0.25em 0;
+}
+
+/* Blockquote styling - GitHub style */
+.vditor-wysiwyg blockquote {
+  margin: 0 0 16px 0;
+  padding: 0 1em;
+  color: #656d76;
+  border-left: 0.25em solid #d0d7de;
+  background: #f6f8fa;
+  border-radius: 0 6px 6px 0;
+}
+
+.vditor-wysiwyg blockquote p {
+  margin-bottom: 0;
+}
+
+/* Code block styling - GitHub style */
+.vditor-wysiwyg pre {
+  margin: 0 0 16px 0;
+  padding: 16px;
+  background: #f6f8fa;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  overflow-x: auto;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 85%;
+  line-height: 1.45;
+}
+
+.vditor-wysiwyg pre code {
+  background: transparent !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  font-size: inherit;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+}
+
+/* Inline code styling */
+.vditor-wysiwyg code {
+  background: rgba(175, 184, 193, 0.2);
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 85%;
+}
+
+/* Task list styling */
+.vditor-wysiwyg .task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.vditor-wysiwyg .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  margin: 0.25em 0;
+}
+
+.vditor-wysiwyg .task-list-item-checkbox {
+  margin-right: 0.5em;
+  margin-top: 0.125em;
+}
+
+/* Table styling */
+.vditor-wysiwyg table {
+  border-collapse: collapse;
+  margin: 0 0 16px 0;
+  width: 100%;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+}
+
+.vditor-wysiwyg th,
+.vditor-wysiwyg td {
+  padding: 6px 13px;
+  border: 1px solid #d0d7de;
+  text-align: left;
+}
+
+.vditor-wysiwyg th {
+  background: #f6f8fa;
+  font-weight: 600;
+}
+
+/* Horizontal rule styling */
+.vditor-wysiwyg hr {
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: #d0d7de;
+  border: 0;
+  border-radius: 2px;
+}
+
+/* TOC placeholder styling */
+.vditor-wysiwyg .toc-placeholder {
+  background: #f6f8fa;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 16px 0;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
+  color: #656d76;
+  border: 1px solid #d0d7de;
+}
+
+/* Markdown indicators styling */
+.vditor-wysiwyg .markdown-indicator {
+  color: #8b949e !important;
+  font-weight: normal !important;
+  opacity: 0.7;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Task list styles */
