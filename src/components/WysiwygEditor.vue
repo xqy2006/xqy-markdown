@@ -613,6 +613,7 @@ export default {
     },
 
     // Insert Tex formula
+    // Insert Tex formula - vditor style without browser dialogs
     insertTexFormula() {
       this.restoreSavedSelection()
       
@@ -622,13 +623,15 @@ export default {
       const range = selection.getRangeAt(0)
       const selectedText = selection.toString()
       
-      const formula = selectedText || prompt('请输入Tex公式:', 'E = mc^2') || 'E = mc^2'
-      
       // Create inline tex span
       const texSpan = document.createElement('span')
       texSpan.className = 'tex-formula'
-      texSpan.textContent = `$ ${formula} $`
-      texSpan.style.cssText = 'background: #f6f8fa; padding: 2px 4px; border-radius: 3px; font-family: monospace;'
+      texSpan.setAttribute('contenteditable', 'true')
+      texSpan.style.cssText = 'background: #f6f8fa; padding: 2px 4px; border-radius: 3px; font-family: serif; border: 1px solid #d0d7de; display: inline-block; min-width: 60px;'
+      
+      // Default formula that user can edit
+      const defaultFormula = selectedText || 'E = mc^2'
+      texSpan.textContent = `$ ${defaultFormula} $`
       
       if (selectedText) {
         range.deleteContents()
@@ -636,14 +639,19 @@ export default {
       
       range.insertNode(texSpan)
       
-      // Position cursor after formula
+      // Select the formula part for easy editing (excluding $ symbols)
       const newRange = document.createRange()
-      newRange.setStartAfter(texSpan)
-      newRange.collapse(true)
+      const textNode = texSpan.firstChild
+      newRange.setStart(textNode, 2) // After first $
+      newRange.setEnd(textNode, textNode.textContent.length - 2) // Before last $
       selection.removeAllRanges()
       selection.addRange(newRange)
       
+      // Focus for immediate editing
+      texSpan.focus()
+      
       this.debouncedConvertToMarkdown()
+    },
     },
 
     // Insert Tex symbol
@@ -2327,8 +2335,8 @@ export default {
     },
 
     // Insert link - vditor inspired
+    // Insert link - vditor style with inline editing
     insertLink() {
-      // Restore selection first
       this.restoreSavedSelection()
       
       const selection = window.getSelection()
@@ -2337,77 +2345,54 @@ export default {
       const range = selection.getRangeAt(0)
       const selectedText = selection.toString()
       
-      const url = prompt('请输入链接地址:')
-      if (!url) return
-      
+      // Create link with default values for inline editing
       const link = document.createElement('a')
-      link.href = url
+      link.href = 'https://example.com'
+      link.style.cssText = 'color: #0969da; text-decoration: underline; background: rgba(9, 105, 218, 0.1); padding: 1px 2px; border-radius: 3px;'
       
       if (selectedText) {
-        // Has selection - use selected text as link text
+        // Use selected text as link text
         link.textContent = selectedText
         range.deleteContents()
-        range.insertNode(link)
-        
-        // Set cursor after link
-        const newRange = document.createRange()
-        newRange.setStartAfter(link)
-        newRange.collapse(true)
-        selection.removeAllRanges()
-        selection.addRange(newRange)
       } else {
-        // No selection - prompt for link text or use ZWSP
-        const linkText = prompt('请输入链接文本:') || '\u200b'
-        link.textContent = linkText
-        range.insertNode(link)
-        
-        if (linkText === '\u200b') {
-          // Position cursor inside the link
-          const newRange = document.createRange()
-          newRange.setStart(link.firstChild, 1)
-          newRange.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(newRange)
-        } else {
-          // Set cursor after link
-          const newRange = document.createRange()
-          newRange.setStartAfter(link)
-          newRange.collapse(true)
-          selection.removeAllRanges()
-          selection.addRange(newRange)
-        }
+        // Default placeholder text
+        link.textContent = '链接文本'
       }
+      
+      range.insertNode(link)
+      
+      // Select the link text for easy editing
+      const newRange = document.createRange()
+      newRange.selectNodeContents(link)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
       
       this.debouncedConvertToMarkdown()
     },
 
-    // Insert image - vditor inspired
+    // Insert image - vditor style with inline editing
     insertImage() {
-      // Restore selection first
       this.restoreSavedSelection()
       
-      const url = prompt('请输入图片地址:')
-      if (!url) return
-      
-      const alt = prompt('请输入图片描述:') || '图片'
-      const img = document.createElement('img')
-      img.src = url
-      img.alt = alt
-      img.style.maxWidth = '100%'
-      img.style.height = 'auto'
-      
       const selection = window.getSelection()
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0)
-        range.insertNode(img)
-        
-        // Set cursor after image
-        const newRange = document.createRange()
-        newRange.setStartAfter(img)
-        newRange.collapse(true)
-        selection.removeAllRanges()
-        selection.addRange(newRange)
-      }
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      
+      // Create image with default values for inline editing
+      const img = document.createElement('img')
+      img.src = 'https://via.placeholder.com/150'
+      img.alt = '图片描述'
+      img.style.cssText = 'max-width: 100%; height: auto; border: 2px dashed #d0d7de; padding: 8px; border-radius: 6px; background: #f6f8fa;'
+      
+      range.insertNode(img)
+      
+      // Position cursor after image
+      const newRange = document.createRange()
+      newRange.setStartAfter(img)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
       
       this.debouncedConvertToMarkdown()
     },
@@ -2431,20 +2416,7 @@ export default {
       // Default placeholder content that user can edit
       codeElement.textContent = 'console.log("Hello World")'
       codeElement.setAttribute('contenteditable', 'true')
-      codeElement.style.cssText = `
-        display: block;
-        background: #f6f8fa;
-        padding: 16px;
-        border-radius: 6px;
-        font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
-        font-size: 85%;
-        line-height: 1.45;
-        white-space: pre;
-        overflow-x: auto;
-        color: #24292f;
-        border: 1px solid #d0d7de;
-        min-height: 60px;
-      `
+      codeElement.style.cssText = 'display: block; background: #f6f8fa; padding: 16px; border-radius: 6px; font-family: monospace; font-size: 85%; line-height: 1.45; white-space: pre; overflow-x: auto; color: #24292f; border: 1px solid #d0d7de; min-height: 60px;'
       pre.appendChild(codeElement)
       
       if (blockElement && blockElement !== this.$refs.editorContent) {
