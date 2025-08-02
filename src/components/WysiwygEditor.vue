@@ -855,22 +855,89 @@ export default {
       }
       
       if (startIndicator && endIndicator) {
-        // Create indicator spans
+        // Create editable indicator spans
         const startSpan = document.createElement('span')
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
-        startSpan.style.cssText = 'color: #999; font-size: 0.9em; user-select: none; opacity: 0.6;'
+        startSpan.contentEditable = 'true'
+        startSpan.style.cssText = 'color: #999; font-size: 0.9em; opacity: 0.6; background: rgba(255,255,255,0.1); border-radius: 2px; padding: 0 1px;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
-        endSpan.style.cssText = 'color: #999; font-size: 0.9em; user-select: none; opacity: 0.6;'
+        endSpan.contentEditable = 'true'
+        endSpan.style.cssText = 'color: #999; font-size: 0.9em; opacity: 0.6; background: rgba(255,255,255,0.1); border-radius: 2px; padding: 0 1px;'
+        
+        // Add event listeners for indicator editing
+        startSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'start'))
+        endSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'end'))
+        startSpan.addEventListener('blur', () => this.debouncedConvertToMarkdown())
+        endSpan.addEventListener('blur', () => this.debouncedConvertToMarkdown())
         
         // Insert indicators
         element.insertBefore(startSpan, element.firstChild)
         element.appendChild(endSpan)
         
         element.dataset.indicatorsShown = 'true'
+      }
+    },
+    
+    // Handle markdown indicator editing
+    handleIndicatorEdit(event, element, position) {
+      const indicator = event.target
+      const newIndicator = indicator.textContent
+      
+      // If the indicator is cleared, remove the formatting
+      if (!newIndicator.trim()) {
+        this.removeFormattingFromElement(element)
+        return
+      }
+      
+      // Update the element based on the new indicator
+      const tagName = element.tagName.toLowerCase()
+      
+      // Handle different indicator patterns
+      if (newIndicator === '**' && (tagName !== 'strong' && tagName !== 'b')) {
+        this.changeElementFormatting(element, 'strong')
+      } else if (newIndicator === '*' && (tagName !== 'em' && tagName !== 'i')) {
+        this.changeElementFormatting(element, 'em')
+      } else if (newIndicator === '~~' && tagName !== 's') {
+        this.changeElementFormatting(element, 's')
+      } else if (newIndicator === '`' && tagName !== 'code') {
+        this.changeElementFormatting(element, 'code')
+      }
+    },
+    
+    // Remove formatting from element
+    removeFormattingFromElement(element) {
+      // Get the text content
+      const textContent = element.textContent
+      
+      // Create a text node to replace the formatted element
+      const textNode = document.createTextNode(textContent)
+      
+      // Replace the formatted element with plain text
+      if (element.parentNode) {
+        element.parentNode.replaceChild(textNode, element)
+      }
+    },
+    
+    // Change element formatting type
+    changeElementFormatting(element, newTagName) {
+      // Create new element with the new tag
+      const newElement = document.createElement(newTagName)
+      
+      // Copy content (excluding indicators)
+      const textContent = element.childNodes
+      Array.from(textContent).forEach(node => {
+        if (!node.classList || !node.classList.contains('markdown-indicator')) {
+          newElement.appendChild(node.cloneNode(true))
+        }
+      })
+      
+      // Replace the old element
+      if (element.parentNode) {
+        element.parentNode.replaceChild(newElement, element)
       }
     },
 
