@@ -860,40 +860,48 @@ export default {
         element.style.cssText += 'font-weight: normal !important; font-style: normal !important; text-decoration: none !important; background: transparent !important; color: inherit !important;'
         element.classList.add('markdown-indicators-active')
         
-        // Create editable indicator spans with improved editability
+        // Create editable indicator spans with enhanced selectability (vditor pattern)
         const startSpan = document.createElement('span')
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
         startSpan.contentEditable = 'true'
-        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
+        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
         endSpan.contentEditable = 'true'
-        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
+        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1) !important; border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important; pointer-events: auto !important;'
+        
+        // Enhanced event handling for proper selectability
+        const preventConversionHandler = () => {
+          this.preventConversion = true
+        }
+        
+        const allowConversionHandler = () => {
+          this.preventConversion = false
+          setTimeout(() => this.debouncedConvertToMarkdown(), 100)
+        }
+        
+        // Make indicators properly selectable with mousedown handling
+        startSpan.addEventListener('mousedown', (e) => {
+          e.stopPropagation()
+        })
+        endSpan.addEventListener('mousedown', (e) => {
+          e.stopPropagation()
+        })
         
         // Prevent conversion while editing indicators
-        startSpan.addEventListener('focus', () => {
-          this.preventConversion = true
-        })
-        endSpan.addEventListener('focus', () => {
-          this.preventConversion = true
-        })
+        startSpan.addEventListener('focus', preventConversionHandler)
+        endSpan.addEventListener('focus', preventConversionHandler)
         
         // Add event listeners for indicator editing with improved handling
         startSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'start'))
         endSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'end'))
         startSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'start'))
         endSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'end'))
-        startSpan.addEventListener('blur', () => {
-          this.preventConversion = false
-          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
-        })
-        endSpan.addEventListener('blur', () => {
-          this.preventConversion = false
-          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
-        })
+        startSpan.addEventListener('blur', allowConversionHandler)
+        endSpan.addEventListener('blur', allowConversionHandler)
         
         // Insert indicators
         element.insertBefore(startSpan, element.firstChild)
@@ -2197,9 +2205,10 @@ export default {
                   selection.addRange(newRange)
                 }
                 
-                // Clear conversion locks and force re-render to fix the "# test" issue
+                // CRITICAL FIX: Clear conversion locks and force re-render to fix the "# test" issue
                 this.preventConversion = false
                 this.isConverting = false
+                this.markdownIndicatorsVisible = false  // Reset indicator state
                 this.debouncedConvertToMarkdown()
               }, 10)
             }
@@ -2208,8 +2217,10 @@ export default {
         
         // For any other backspace, ensure proper re-rendering after deletion
         setTimeout(() => {
-          // Clear any conversion locks and force re-render to fix real-time rendering issues
+          // Clear conversion locks and force re-render to fix real-time rendering issues
           this.preventConversion = false
+          this.isConverting = false
+          this.markdownIndicatorsVisible = false  // Reset indicator state
           this.isConverting = false
           this.debouncedConvertToMarkdown()
         }, 10)
@@ -2713,14 +2724,20 @@ export default {
       const range = selection.getRangeAt(0)
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
-      // Check if we're already in a code block
-      const existingCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
-      if (existingCodeBlock) {
-        // Convert code block back to paragraph
+      // Check if we're already in a vditor-style code block
+      const existingVditorCodeBlock = this.getClosestElement(range.startContainer, 'DIV[data-type="code-block"]')
+      const existingPreCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
+      
+      if (existingVditorCodeBlock || existingPreCodeBlock) {
+        // Convert code block back to paragraph (toggle functionality)
+        const codeBlock = existingVditorCodeBlock || existingPreCodeBlock
         const p = document.createElement('p')
         p.setAttribute('data-block', '0')
-        p.innerHTML = existingCodeBlock.textContent || '<br>'
-        existingCodeBlock.parentNode.replaceChild(p, existingCodeBlock)
+        const codeContent = codeBlock.querySelector('code')?.textContent || codeBlock.textContent || ''
+        p.textContent = codeContent.replace(/^语言\n?/, '').trim() || ''
+        if (!p.textContent) p.innerHTML = '<br>'
+        
+        codeBlock.parentNode.replaceChild(p, codeBlock)
         
         // Set cursor in paragraph
         const newRange = document.createRange()
@@ -2737,27 +2754,78 @@ export default {
         return
       }
       
-      // Create vditor-style code block structure
-      const pre = document.createElement('pre')
-      pre.setAttribute('data-block', '0')
-      pre.style.cssText = 'margin: 0 0 16px 0; padding: 16px; background: #f6f8fa; border-radius: 6px; border: 1px solid #d0d7de; overflow-x: auto; font-family: "SF Mono", Monaco, Inconsolata, "Roboto Mono", Consolas, "Courier New", monospace; font-size: 85%; line-height: 1.45;'
+      // Create vditor-compliant code block structure
+      const codeBlockDiv = document.createElement('div')
+      codeBlockDiv.className = 'vditor-wysiwyg__block'
+      codeBlockDiv.setAttribute('data-type', 'code-block')
+      codeBlockDiv.setAttribute('data-block', '0')
       
+      const pre = document.createElement('pre')
       const codeElement = document.createElement('code')
       codeElement.setAttribute('spellcheck', 'false')
-      codeElement.style.cssText = 'background: transparent !important; padding: 0 !important; border: none !important; border-radius: 0 !important; font-size: inherit; white-space: pre; word-break: normal; word-wrap: normal; color: #24292f;'
       
-      // Start with placeholder text for language selection like vditor
+      // Start with language placeholder like vditor
       codeElement.textContent = '语言\n'
+      
       pre.appendChild(codeElement)
+      codeBlockDiv.appendChild(pre)
       
       if (blockElement && blockElement !== this.$refs.editorContent) {
         // Replace current block
-        blockElement.parentNode.replaceChild(pre, blockElement)
+        blockElement.parentNode.replaceChild(codeBlockDiv, blockElement)
       } else {
         // Insert at cursor position  
         range.deleteContents()
-        range.insertNode(pre)
+        range.insertNode(codeBlockDiv)
       }
+      
+      // Enhanced keyboard event handling for vditor-style behavior
+      codeElement.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          // Insert line break within code block (not new block)
+          const selection = window.getSelection()
+          const range = selection.getRangeAt(0)
+          const textNode = document.createTextNode('\n')
+          range.insertNode(textNode)
+          range.setStartAfter(textNode)
+          range.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(range)
+        } else if (event.key === 'Tab') {
+          event.preventDefault()
+          // Insert 2-space indentation
+          const selection = window.getSelection()
+          const range = selection.getRangeAt(0)
+          const textNode = document.createTextNode('  ')
+          range.insertNode(textNode)
+          range.setStartAfter(textNode)
+          range.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(range)
+        } else if (event.key === 'Backspace') {
+          const text = codeElement.textContent
+          const selection = window.getSelection()
+          const range = selection.getRangeAt(0)
+          
+          // Convert to paragraph if empty or only has language placeholder
+          if ((text === '语言\n' || text.trim() === '语言' || !text.trim()) && range.startOffset === 0) {
+            event.preventDefault()
+            const p = document.createElement('p')
+            p.setAttribute('data-block', '0')
+            p.innerHTML = '<br>'
+            codeBlockDiv.parentNode.replaceChild(p, codeBlockDiv)
+            
+            const newRange = document.createRange()
+            newRange.setStart(p, 0)
+            newRange.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(newRange)
+            
+            this.debouncedConvertToMarkdown()
+          }
+        }
+      })
       
       // Set cursor after "语言" for immediate editing (vditor pattern)
       const newRange = document.createRange()
@@ -3081,39 +3149,48 @@ export default {
   margin-bottom: 0;
 }
 
-/* Code block styling - GitHub style */
-.vditor-wysiwyg pre {
-  margin: 0 0 16px 0;
-  padding: 16px;
-  background: #f6f8fa;
-  border-radius: 6px;
-  border: 1px solid #d0d7de;
-  overflow-x: auto;
-  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 85%;
-  line-height: 1.45;
+/* Code block styling - vditor-compliant GitHub style */
+.vditor-wysiwyg pre,
+.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] pre {
+  margin: 0 0 16px 0 !important;
+  padding: 16px !important;
+  background: #f6f8fa !important;
+  border-radius: 6px !important;
+  border: 1px solid #d0d7de !important;
+  overflow-x: auto !important;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace !important;
+  font-size: 85% !important;
+  line-height: 1.45 !important;
+  color: #24292f !important;
 }
 
-.vditor-wysiwyg pre code {
+.vditor-wysiwyg pre code,
+.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] pre code {
   background: transparent !important;
   padding: 0 !important;
   border: none !important;
   border-radius: 0 !important;
-  font-size: inherit;
-  white-space: pre;
-  word-break: normal;
-  word-wrap: normal;
+  font-size: inherit !important;
+  white-space: pre !important;
+  word-break: normal !important;
+  word-wrap: normal !important;
+  color: #24292f !important;
 }
 
-/* Inline code styling - Fixed with proper background */
+/* vditor-style block wrapper */
+.vditor-wysiwyg .vditor-wysiwyg__block[data-type="code-block"] {
+  margin: 0 0 16px 0 !important;
+}
+
+/* Inline code styling - Enhanced with proper background */
 .vditor-wysiwyg code {
   background: rgba(175, 184, 193, 0.2) !important;
-  padding: 0.2em 0.4em;
-  border-radius: 6px;
-  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 85%;
-  color: #24292f;
-  border: 1px solid rgba(175, 184, 193, 0.1);
+  padding: 0.2em 0.4em !important;
+  border-radius: 6px !important;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace !important;
+  font-size: 85% !important;
+  color: #24292f !important;
+  border: 1px solid rgba(175, 184, 193, 0.1) !important;
 }
 
 /* Task list styling */
