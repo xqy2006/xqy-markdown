@@ -1386,39 +1386,45 @@ export default {
     // Convert inline markdown patterns in real-time
     convertInlineMarkdownPatterns(textNode, beforeCursor, afterCursor, range) {
       const patterns = [
-        // Bold: **text** or __text__
+        // Bold: **text** or __text__ - also match if followed by space
         {
-          regex: /\*\*([^*]+)\*\*$/,
-          replacement: (match, content) => this.createInlineElement('strong', content),
-          removeLength: match => match[0].length
+          regex: /\*\*([^*]+)\*\*(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('strong', content),
+          removeLength: match => match[1].length + 4, // Remove **text** but keep space
+          spaceAfter: match => match[2] || ''
         },
         {
-          regex: /__([^_]+)__$/,
-          replacement: (match, content) => this.createInlineElement('strong', content),
-          removeLength: match => match[0].length
+          regex: /__([^_]+)__(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('strong', content),
+          removeLength: match => match[1].length + 4, // Remove __text__ but keep space
+          spaceAfter: match => match[2] || ''
         },
-        // Italic: *text* or _text_ (but not when part of bold)
+        // Italic: *text* or _text_ (but not when part of bold) - also match if followed by space
         {
-          regex: /(?:^|[^*])\*([^*]+)\*$/,
-          replacement: (match, content) => this.createInlineElement('em', content),
-          removeLength: match => match[0].includes('*' + match[1] + '*') ? match[1].length + 2 : match[0].length
+          regex: /(?:^|[^*])\*([^*\s][^*]*[^*\s]|\S)\*(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('em', content),
+          removeLength: match => match[1].length + 2, // Remove *text* but keep space
+          spaceAfter: match => match[2] || ''
         },
         {
-          regex: /(?:^|[^_])_([^_]+)_$/,
-          replacement: (match, content) => this.createInlineElement('em', content),
-          removeLength: match => match[0].includes('_' + match[1] + '_') ? match[1].length + 2 : match[0].length
+          regex: /(?:^|[^_])_([^_\s][^_]*[^_\s]|\S)_(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('em', content),
+          removeLength: match => match[1].length + 2, // Remove _text_ but keep space
+          spaceAfter: match => match[2] || ''
         },
-        // Inline code: `text`
+        // Inline code: `text` - also match if followed by space
         {
-          regex: /`([^`]+)`$/,
-          replacement: (match, content) => this.createInlineElement('code', content),
-          removeLength: match => match[0].length
+          regex: /`([^`]+)`(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('code', content),
+          removeLength: match => match[1].length + 2, // Remove `text` but keep space
+          spaceAfter: match => match[2] || ''
         },
-        // Strikethrough: ~~text~~
+        // Strikethrough: ~~text~~ - also match if followed by space
         {
-          regex: /~~([^~]+)~~$/,
-          replacement: (match, content) => this.createInlineElement('s', content),
-          removeLength: match => match[0].length
+          regex: /~~([^~]+)~~(\s*)$/,
+          replacement: (match, content, space) => this.createInlineElement('s', content),
+          removeLength: match => match[1].length + 4, // Remove ~~text~~ but keep space
+          spaceAfter: match => match[2] || ''
         }
       ]
       
@@ -1426,25 +1432,26 @@ export default {
         const match = beforeCursor.match(pattern.regex)
         if (match) {
           // Create the replacement element
-          const element = pattern.replacement(match, match[1])
+          const element = pattern.replacement(match, match[1], match[2] || '')
           
           // Calculate positions
           const removeLength = pattern.removeLength(match)
-          const startPos = beforeCursor.length - removeLength
+          const spaceAfter = pattern.spaceAfter ? pattern.spaceAfter(match) : ''
+          const startPos = beforeCursor.length - removeLength - spaceAfter.length
           
           // Update text node content
           const newTextBefore = beforeCursor.substring(0, startPos)
-          const newTextAfter = afterCursor
+          const newTextAfter = spaceAfter + afterCursor
           
-          // Create new text nodes if needed
+          // Create new text content
           const newTextContent = newTextBefore + newTextAfter
           
           // Replace content
-          if (newTextContent.trim()) {
+          if (newTextContent.trim() || spaceAfter) {
             textNode.textContent = newTextContent
           } else {
             // If no text remains, replace the text node with just the element
-            textNode.textContent = ''
+            textNode.textContent = spaceAfter
           }
           
           // Insert the formatted element
@@ -1452,8 +1459,18 @@ export default {
           newRange.setStart(textNode, newTextBefore.length)
           newRange.insertNode(element)
           
-          // Position cursor after the element
-          newRange.setStartAfter(element)
+          // Position cursor after the element (accounting for space)
+          if (spaceAfter) {
+            // Position cursor after the space that follows the element
+            const nextSibling = element.nextSibling
+            if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE && nextSibling.textContent.length >= spaceAfter.length) {
+              newRange.setStart(nextSibling, spaceAfter.length)
+            } else {
+              newRange.setStartAfter(element)
+            }
+          } else {
+            newRange.setStartAfter(element)
+          }
           newRange.collapse(true)
           
           const selection = window.getSelection()
@@ -1853,7 +1870,12 @@ export default {
       const beforeCursor = text.substring(0, offset)
       const afterCursor = text.substring(offset)
       
-      // Only check block patterns on trigger
+      // Check for inline patterns first (they have higher priority)
+      if (this.convertInlineMarkdownPatterns(textNode, beforeCursor, afterCursor, range)) {
+        return // If inline pattern was processed, don't check block patterns
+      }
+      
+      // Check block patterns
       this.convertBlockMarkdownPatterns(textNode, beforeCursor, afterCursor, range)
     },
 
