@@ -1648,15 +1648,15 @@ export default {
           removeLength: match => match[1].length + 4, // Remove __text__ but keep space
           spaceAfter: match => match[2] || ''
         },
-        // Italic: *text* or _text_ (but not when part of bold) - also match if followed by space
+        // Italic: *text* or _text_ (simplified regex to avoid conflicts)
         {
-          regex: /(?:^|[^*])\*([^*\s][^*]*[^*\s]|\S)\*(\s*)$/,
+          regex: /\*([^*]+)\*(\s*)$/,
           replacement: (match, content, space) => this.createInlineElement('em', content),
           removeLength: match => match[1].length + 2, // Remove *text* but keep space
           spaceAfter: match => match[2] || ''
         },
         {
-          regex: /(?:^|[^_])_([^_\s][^_]*[^_\s]|\S)_(\s*)$/,
+          regex: /_([^_]+)_(\s*)$/,
           replacement: (match, content, space) => this.createInlineElement('em', content),
           removeLength: match => match[1].length + 2, // Remove _text_ but keep space
           spaceAfter: match => match[2] || ''
