@@ -2583,16 +2583,15 @@ export default {
         
         // Get current content, removing wbr for clean content
         let content = blockElement.innerHTML
-        const wbr = blockElement.querySelector('wbr')
-        if (wbr) {
-          // Remember wbr position before removing it
-          wbr.remove()
+        const wbrElements = blockElement.querySelectorAll('wbr')
+        if (wbrElements.length > 0) {
+          wbrElements.forEach(el => el.remove())
         }
         
         // Create new heading
         const heading = document.createElement('h' + level)
         // Preserve content or set default text
-        heading.innerHTML = content.trim() || ('标题' + level)
+        heading.innerHTML = content.trim() || ('标题 ' + level)
         
         // Replace the old element with the new heading
         if (blockElement.parentNode) {
@@ -2607,50 +2606,7 @@ export default {
     },
 
     // Insert list - vditor inspired
-    insertList(type) {
-      // Restore selection first
-      this.restoreSavedSelection()
-      
-      const selection = window.getSelection()
-      if (selection.rangeCount === 0) return
-      
-      const range = selection.getRangeAt(0)
-      let blockElement = this.getClosestBlockElement(range.startContainer)
-      
-      // If no block element, try to find from cursor position
-      if (!blockElement && range.startContainer.nodeType === Node.ELEMENT_NODE) {
-        blockElement = range.startContainer.childNodes[range.startOffset]
-      }
-      
-      // Create the list structure
-      const list = document.createElement(type)
-      const listItem = document.createElement('li')
-      
-      if (blockElement && blockElement !== this.$refs.editorContent) {
-        // Convert existing block to list item
-        listItem.innerHTML = blockElement.innerHTML || '列表项'
-        list.appendChild(listItem)
-        
-        // Replace the block element with the list
-        if (blockElement.parentNode) {
-          blockElement.parentNode.replaceChild(list, blockElement)
-        }
-      } else {
-        // Create new list
-        listItem.innerHTML = '列表项'
-        list.appendChild(listItem)
-        
-        if (this.$refs.editorContent.children.length === 0) {
-          this.$refs.editorContent.appendChild(list)
-        } else {
-          range.insertNode(list)
-        }
-      }
-      
-      // Restore cursor position
-      this.restoreCursorPosition()
-      this.debouncedConvertToMarkdown()
-    },
+    insertList(type) {},
 
     // Insert link - vditor inspired
     // Insert link - vditor style with inline editing
