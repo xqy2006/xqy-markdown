@@ -1,98 +1,310 @@
 <template>
   <div class="wysiwyg-editor">
-    <!-- WYSIWYG Toolbar inspired by vditor -->
+    <!-- WYSIWYG Toolbar - Complete replication of split mode -->
     <div class="wysiwyg-toolbar vditor-toolbar">
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatText('bold')" 
-                aria-label="粗体 (Ctrl+B)">
-          <Bold :size="16" />
-        </button>
+      <!-- First row - exact match with split mode -->
+      <div class="toolbar-row">
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="cycleHeading()" 
+                  aria-label="标题">
+            <Heading :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertCodeBlock()" 
+                  aria-label="代码块">
+            <Code :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertInlineCode()" 
+                  aria-label="单行代码">
+            <Code2 :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertImage()" 
+                  aria-label="图片">
+            <Image :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertQuote()" 
+                  aria-label="引用">
+            <Quote :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertList('ul')" 
+                  aria-label="无序列表">
+            <List :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTaskList()" 
+                  aria-label="任务列表">
+            <CheckSquare :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTOC()" 
+                  aria-label="目录">
+            <BookOpen :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertHorizontalRule()" 
+                  aria-label="分割线">
+            <Minus :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexFormula()" 
+                  aria-label="Tex公式">
+            <Sigma :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="toggleTexToolbox()" 
+                  :aria-label="showTexToolbox ? '隐藏Tex工具箱' : '显示Tex工具箱'">
+            <Eye v-if="!showTexToolbox" :size="16" />
+            <EyeOff v-else :size="16" />
+          </button>
+        </div>
       </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatText('italic')" 
-                aria-label="斜体 (Ctrl+I)">
-          <Italic :size="16" />
-        </button>
+
+      <!-- Second row - formatting buttons -->
+      <div class="toolbar-row">
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatText('bold')" 
+                  aria-label="粗体 (Ctrl+B)">
+            <Bold :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatText('italic')" 
+                  aria-label="斜体 (Ctrl+I)">
+            <Italic :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatText('underline')" 
+                  aria-label="下划线 (Ctrl+U)">
+            <Underline :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatColor('red')" 
+                  aria-label="标红">
+            <Type :size="16" style="color: #d73a49;" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatHighlight()" 
+                  aria-label="高亮">
+            <Highlighter :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="formatText('strikethrough')" 
+                  aria-label="删除线 (Ctrl+D)">
+            <Strikethrough :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertLink()" 
+                  aria-label="链接 (Ctrl+K)">
+            <Link :size="16" />
+          </button>
+        </div>
       </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatHeading(1)" 
-                aria-label="标题1 (Ctrl+1)">
-          <Heading :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatHeading(2)" 
-                aria-label="标题2 (Ctrl+2)">
-          <Heading :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatText('underline')" 
-                aria-label="下划线 (Ctrl+U)">
-          <Underline :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="formatText('strikethrough')" 
-                aria-label="删除线 (Ctrl+D)">
-          <Strikethrough :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="insertList('ul')" 
-                aria-label="无序列表">
-          <List :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="insertList('ol')" 
-                aria-label="有序列表">
-          <ListOrdered :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="insertLink()" 
-                aria-label="链接 (Ctrl+K)">
-          <Link :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="insertImage()" 
-                aria-label="图片">
-          <Image :size="16" />
-        </button>
-      </div>
-      <div class="vditor-toolbar__item">
-        <button class="vditor-tooltipped vditor-tooltipped--n" 
-                @mousedown="handleToolbarMouseDown"
-                @click="insertCodeBlock()" 
-                aria-label="代码块">
-          <Code :size="16" />
-        </button>
+
+      <!-- Third row - Tex toolbox (when enabled) -->
+      <div v-if="showTexToolbox" class="toolbar-row tex-toolbar">
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('+')" 
+                  aria-label="加号">
+            <Plus :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('-')" 
+                  aria-label="减号">
+            <Minus :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\cdot')" 
+                  aria-label="点乘">
+            <CircleDot :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\times')" 
+                  aria-label="叉乘">
+            <X :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\div')" 
+                  aria-label="除法">
+            <Divide :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\\\')" 
+                  aria-label="换行">
+            <RotateCcw :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\frac{', '}{}')" 
+                  aria-label="分数">
+            <span style="font-size: 12px; font-weight: bold;">a/b</span>
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('^{', '}')" 
+                  aria-label="上标">
+            <ArrowUp :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('_{', '}')" 
+                  aria-label="下标">
+            <ArrowDown :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\sqrt[]{', '}')" 
+                  aria-label="根号">
+            <SquareRadical :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\overrightarrow{', '}')" 
+                  aria-label="向量">
+            <ArrowRight :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\overset{\\frown}{', '}')" 
+                  aria-label="弧">
+            <span style="font-size: 12px;">⌒</span>
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\'')" 
+                  aria-label="导数">
+            <span style="font-size: 12px;">f'</span>
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\sum_{', '}^{} {}')" 
+                  aria-label="求和">
+            <Sigma :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\prod_{', '}^{} {}')" 
+                  aria-label="求积">
+            <span style="font-size: 12px;">∏</span>
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\lim_{n \\to \\infty}{', '}')" 
+                  aria-label="极限">
+            <span style="font-size: 10px;">lim</span>
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\int_{}^{} {', '}\\, dx')" 
+                  aria-label="积分">
+            <FunctionSquare :size="16" />
+          </button>
+        </div>
+        <div class="vditor-toolbar__item">
+          <button class="vditor-tooltipped vditor-tooltipped--n" 
+                  @mousedown="handleToolbarMouseDown"
+                  @click="insertTexSymbol('\\begin{cases}line1', '\\\\line2\\end{cases}')" 
+                  aria-label="大括号">
+            <Braces :size="16" />
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- WYSIWYG Content Area inspired by vditor -->
+    <!-- WYSIWYG Content Area with vditor-style markdown indicator visibility -->
     <div 
       ref="editorContent"
       class="vditor-wysiwyg"
@@ -104,6 +316,7 @@
       @keyup="handleKeyup"
       @focus="handleFocus"
       @blur="handleBlur"
+      @click="handleClick"
       @compositionstart="handleCompositionStart"
       @compositionend="handleCompositionEnd"
       v-html="htmlContent"
@@ -115,14 +328,22 @@
 <script>
 import { 
   Bold, Italic, Underline, Strikethrough, Heading, 
-  List, ListOrdered, Link, Image, Code 
+  List, ListOrdered, Link, Image, Code, Code2, Quote, 
+  CheckSquare, BookOpen, Minus, Sigma, Eye, EyeOff,
+  Type, Highlighter, Plus, Divide, X, SquareRadical, 
+  ArrowRight, ArrowUp, ArrowDown, FunctionSquare, Braces,
+  CircleDot, RotateCcw
 } from 'lucide-vue-next'
 
 export default {
   name: 'WysiwygEditor',
   components: {
     Bold, Italic, Underline, Strikethrough, Heading,
-    List, ListOrdered, Link, Image, Code
+    List, ListOrdered, Link, Image, Code, Code2, Quote,
+    CheckSquare, BookOpen, Minus, Sigma, Eye, EyeOff,
+    Type, Highlighter, Plus, Divide, X, SquareRadical,
+    ArrowRight, ArrowUp, ArrowDown, FunctionSquare, Braces,
+    CircleDot, RotateCcw
   },
   props: {
     modelValue: {
@@ -138,7 +359,11 @@ export default {
       debounceTimer: null,
       composingLock: false,
       preventInput: false,
-      savedSelection: null // Store selection when focus is lost
+      savedSelection: null, // Store selection when focus is lost
+      showTexToolbox: false, // Toggle for Tex toolbox
+      markdownIndicatorsVisible: false, // Track if markdown indicators are shown
+      currentCursorPosition: null, // Track cursor for indicator visibility
+      headingLevel: 1 // Current heading level for cycling
     }
   },
   watch: {
@@ -152,6 +377,448 @@ export default {
     }
   },
   methods: {
+    // Toggle Tex toolbox visibility
+    toggleTexToolbox() {
+      this.showTexToolbox = !this.showTexToolbox
+      this.restoreSavedSelection()
+    },
+
+    // Cycle through heading levels (like split mode)
+    cycleHeading() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      if (!blockElement) {
+        // Create a new heading if no block element
+        this.formatHeading(1)
+        return
+      }
+      
+      // Check current heading level
+      const currentTag = blockElement.tagName.toLowerCase()
+      let newLevel = 1
+      
+      if (currentTag.match(/^h[1-6]$/)) {
+        const currentLevel = parseInt(currentTag.charAt(1))
+        newLevel = currentLevel >= 6 ? 1 : currentLevel + 1 // Cycle H1->H6->H1
+      }
+      
+      this.formatHeading(newLevel)
+    },
+
+    // Insert blockquote
+    insertQuote() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        // Save cursor position
+        range.insertNode(document.createElement('wbr'))
+        
+        // Check if already a blockquote
+        if (blockElement.tagName.toLowerCase() === 'blockquote') {
+          // Convert blockquote back to paragraph
+          const p = document.createElement('p')
+          p.innerHTML = blockElement.innerHTML
+          blockElement.parentNode.replaceChild(p, blockElement)
+        } else {
+          // Convert to blockquote
+          const blockquote = document.createElement('blockquote')
+          blockquote.innerHTML = blockElement.innerHTML || '引用内容<wbr>'
+          blockElement.parentNode.replaceChild(blockquote, blockElement)
+        }
+        
+        // Restore cursor position
+        this.restoreCursorPosition()
+        this.debouncedConvertToMarkdown()
+      }
+    },
+
+    // Insert task list
+    insertTaskList() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      
+      // Create task list structure
+      const list = document.createElement('ul')
+      list.className = 'task-list'
+      const listItem = document.createElement('li')
+      listItem.className = 'task-list-item'
+      
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.className = 'task-list-item-checkbox'
+      
+      const textSpan = document.createElement('span')
+      textSpan.textContent = '任务项目'
+      
+      listItem.appendChild(checkbox)
+      listItem.appendChild(textSpan)
+      list.appendChild(listItem)
+      
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        blockElement.parentNode.replaceChild(list, blockElement)
+      } else {
+        range.insertNode(list)
+      }
+      
+      // Position cursor after checkbox
+      const newRange = document.createRange()
+      newRange.setStart(textSpan, 0)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Insert Table of Contents
+    insertTOC() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      
+      // Create TOC placeholder
+      const tocDiv = document.createElement('div')
+      tocDiv.className = 'toc-placeholder'
+      tocDiv.textContent = '[TOC]'
+      tocDiv.style.cssText = 'background: #f6f8fa; padding: 8px; border-radius: 4px; margin: 16px 0; font-family: monospace;'
+      
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        blockElement.parentNode.insertBefore(tocDiv, blockElement.nextSibling)
+      } else {
+        range.insertNode(tocDiv)
+      }
+      
+      // Position cursor after TOC
+      const newRange = document.createRange()
+      newRange.setStartAfter(tocDiv)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Insert horizontal rule
+    insertHorizontalRule() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      
+      // Create horizontal rule
+      const hr = document.createElement('hr')
+      
+      let blockElement = this.getClosestBlockElement(range.startContainer)
+      if (blockElement && blockElement !== this.$refs.editorContent) {
+        blockElement.parentNode.insertBefore(hr, blockElement.nextSibling)
+      } else {
+        range.insertNode(hr)
+      }
+      
+      // Create new paragraph after HR
+      const newP = document.createElement('p')
+      newP.innerHTML = '<br>'
+      hr.parentNode.insertBefore(newP, hr.nextSibling)
+      
+      // Position cursor in new paragraph
+      const newRange = document.createRange()
+      newRange.setStart(newP, 0)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Insert Tex formula
+    insertTexFormula() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString()
+      
+      const formula = selectedText || prompt('请输入Tex公式:', 'E = mc^2') || 'E = mc^2'
+      
+      // Create inline tex span
+      const texSpan = document.createElement('span')
+      texSpan.className = 'tex-formula'
+      texSpan.textContent = `$ ${formula} $`
+      texSpan.style.cssText = 'background: #f6f8fa; padding: 2px 4px; border-radius: 3px; font-family: monospace;'
+      
+      if (selectedText) {
+        range.deleteContents()
+      }
+      
+      range.insertNode(texSpan)
+      
+      // Position cursor after formula
+      const newRange = document.createRange()
+      newRange.setStartAfter(texSpan)
+      newRange.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Insert Tex symbol
+    insertTexSymbol(startSymbol, endSymbol = '') {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString()
+      
+      const texSpan = document.createElement('span')
+      texSpan.className = 'tex-symbol'
+      texSpan.style.cssText = 'background: #f6f8fa; padding: 2px 4px; border-radius: 3px; font-family: monospace;'
+      
+      if (selectedText) {
+        texSpan.textContent = `${startSymbol}${selectedText}${endSymbol}`
+        range.deleteContents()
+      } else {
+        texSpan.textContent = `${startSymbol}${endSymbol}`
+      }
+      
+      range.insertNode(texSpan)
+      
+      // Position cursor appropriately
+      const newRange = document.createRange()
+      if (!selectedText && endSymbol) {
+        // Position cursor between start and end symbols
+        const textNode = texSpan.firstChild
+        const cursorPos = startSymbol.length
+        newRange.setStart(textNode, cursorPos)
+        newRange.collapse(true)
+      } else {
+        newRange.setStartAfter(texSpan)
+        newRange.collapse(true)
+      }
+      
+      selection.removeAllRanges()
+      selection.addRange(newRange)
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Format text color
+    formatColor(color) {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString()
+      
+      const fontElement = document.createElement('font')
+      fontElement.setAttribute('color', color)
+      
+      if (selectedText) {
+        fontElement.textContent = selectedText
+        range.deleteContents()
+        range.insertNode(fontElement)
+        
+        // Select the new element
+        const newRange = document.createRange()
+        newRange.selectNodeContents(fontElement)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      } else {
+        fontElement.textContent = '\u200b' // Zero-width space
+        range.insertNode(fontElement)
+        
+        // Position cursor inside the element
+        const newRange = document.createRange()
+        newRange.setStart(fontElement.firstChild, 1)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Format text with highlight
+    formatHighlight() {
+      this.restoreSavedSelection()
+      
+      const selection = window.getSelection()
+      if (selection.rangeCount === 0) return
+      
+      const range = selection.getRangeAt(0)
+      const selectedText = selection.toString()
+      
+      const markElement = document.createElement('mark')
+      
+      if (selectedText) {
+        markElement.textContent = selectedText
+        range.deleteContents()
+        range.insertNode(markElement)
+        
+        // Select the new element
+        const newRange = document.createRange()
+        newRange.selectNodeContents(markElement)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      } else {
+        markElement.textContent = '\u200b' // Zero-width space
+        range.insertNode(markElement)
+        
+        // Position cursor inside the element
+        const newRange = document.createRange()
+        newRange.setStart(markElement.firstChild, 1)
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+      }
+      
+      this.debouncedConvertToMarkdown()
+    },
+
+    // Handle click events for markdown indicator visibility
+    handleClick(event) {
+      setTimeout(() => {
+        this.updateMarkdownIndicatorVisibility()
+      }, 10)
+    },
+
+    // Update markdown indicator visibility based on cursor position (vditor-style)
+    updateMarkdownIndicatorVisibility() {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      if (!range.collapsed) return // Only for cursor position, not selection
+      
+      const container = range.startContainer
+      
+      // Check if cursor is inside formatted elements
+      const formattedElement = this.getClosestFormattedElement(container)
+      
+      if (formattedElement) {
+        this.showMarkdownIndicators(formattedElement)
+      } else {
+        this.hideMarkdownIndicators()
+      }
+    },
+
+    // Get closest formatted element (bold, italic, etc.)
+    getClosestFormattedElement(node) {
+      let current = node.nodeType === Node.TEXT_NODE ? node.parentElement : node
+      
+      while (current && current !== this.$refs.editorContent) {
+        const tagName = current.tagName.toLowerCase()
+        if (['strong', 'b', 'em', 'i', 'u', 's', 'code', 'mark', 'font'].includes(tagName)) {
+          return current
+        }
+        current = current.parentElement
+      }
+      
+      return null
+    },
+
+    // Show markdown indicators for a formatted element (vditor-style)
+    showMarkdownIndicators(element) {
+      if (element.dataset.indicatorsShown) return
+      
+      const tagName = element.tagName.toLowerCase()
+      let startIndicator = ''
+      let endIndicator = ''
+      
+      switch (tagName) {
+        case 'strong':
+        case 'b':
+          startIndicator = '**'
+          endIndicator = '**'
+          break
+        case 'em':
+        case 'i':
+          startIndicator = '*'
+          endIndicator = '*'
+          break
+        case 's':
+          startIndicator = '~~'
+          endIndicator = '~~'
+          break
+        case 'code':
+          startIndicator = '`'
+          endIndicator = '`'
+          break
+        case 'u':
+          startIndicator = '<u>'
+          endIndicator = '</u>'
+          break
+        case 'mark':
+          startIndicator = '<mark>'
+          endIndicator = '</mark>'
+          break
+        case 'font':
+          const color = element.getAttribute('color') || 'red'
+          startIndicator = `<font color="${color}">`
+          endIndicator = '</font>'
+          break
+      }
+      
+      if (startIndicator && endIndicator) {
+        // Create indicator spans
+        const startSpan = document.createElement('span')
+        startSpan.className = 'markdown-indicator markdown-indicator-start'
+        startSpan.textContent = startIndicator
+        startSpan.style.cssText = 'color: #999; font-size: 0.9em; user-select: none; opacity: 0.6;'
+        
+        const endSpan = document.createElement('span')
+        endSpan.className = 'markdown-indicator markdown-indicator-end'  
+        endSpan.textContent = endIndicator
+        endSpan.style.cssText = 'color: #999; font-size: 0.9em; user-select: none; opacity: 0.6;'
+        
+        // Insert indicators
+        element.insertBefore(startSpan, element.firstChild)
+        element.appendChild(endSpan)
+        
+        element.dataset.indicatorsShown = 'true'
+      }
+    },
+
+    // Hide markdown indicators
+    hideMarkdownIndicators() {
+      const indicators = this.$refs.editorContent.querySelectorAll('.markdown-indicator')
+      indicators.forEach(indicator => {
+        indicator.remove()
+        // Remove the flag from parent element
+        if (indicator.parentElement) {
+          delete indicator.parentElement.dataset.indicatorsShown
+        }
+      })
+    },
     // Convert Markdown to HTML using parent's markdown renderer
     markdownToHtml(markdown) {
       if (!markdown) return '<p><br></p>'
@@ -333,6 +1000,10 @@ export default {
           return content || ''
           
         case 'ul':
+          // Check if it's a task list
+          if (element.className.includes('task-list')) {
+            return this.processTaskListMarkdown(element)
+          }
           return this.processListMarkdown(element, false)
           
         case 'ol':
@@ -356,6 +1027,14 @@ export default {
           
         case 'table':
           return this.processTableMarkdown(element)
+          
+        case 'div':
+          // Handle special div elements
+          if (element.className.includes('toc-placeholder')) {
+            return '[[TOC]]'
+          }
+          // For other divs, process as block content
+          return this.processInlineMarkdown(element)
           
         default:
           // Handle inline elements and other content
@@ -429,6 +1108,24 @@ export default {
             case 'code':
               const codeText = this.getTextContent(node).replace(/\u200b/g, '')
               return codeText ? `\`${codeText}\`` : ''
+            case 'mark':
+              const markText = this.getTextContent(node).replace(/\u200b/g, '')
+              return markText ? `<mark>${markText}</mark>` : ''
+            case 'font':
+              const fontText = this.getTextContent(node).replace(/\u200b/g, '')
+              const color = node.getAttribute('color') || 'red'
+              return fontText ? `<font color="${color}">${fontText}</font>` : ''
+            case 'span':
+              // Handle special span elements (tex formulas, etc.)
+              if (node.className.includes('tex-formula') || node.className.includes('tex-symbol')) {
+                return node.textContent || ''
+              }
+              // Skip markdown indicators 
+              if (node.className.includes('markdown-indicator')) {
+                return ''
+              }
+              // For other spans, process their children
+              return Array.from(node.childNodes).map(child => processNode(child)).join('')
             case 'a':
               const href = node.getAttribute('href') || ''
               const linkText = this.getTextContent(node).replace(/\u200b/g, '')
@@ -437,6 +1134,9 @@ export default {
               const src = node.getAttribute('src') || ''
               const alt = node.getAttribute('alt') || ''
               return `![${alt}](${src})`
+            case 'input':
+              // Handle task list checkboxes - these are processed at the list level
+              return ''
             case 'br':
               return '\n'
             case 'wbr':
@@ -465,6 +1165,26 @@ export default {
         result += this.getTextContent(child)
       }
       return result
+    },
+
+    // Process task list elements to Markdown
+    processTaskListMarkdown(element) {
+      const items = element.querySelectorAll('li.task-list-item')
+      let result = ''
+      
+      items.forEach((item) => {
+        const checkbox = item.querySelector('input[type="checkbox"]')
+        const checked = checkbox ? checkbox.checked : false
+        const checkmark = checked ? 'x' : ' '
+        
+        // Get text content excluding the checkbox
+        const textSpan = item.querySelector('span') || item
+        const text = textSpan.textContent || ''
+        
+        result += `- [${checkmark}] ${text}\n`
+      })
+      
+      return result.trim()
     },
 
     // Process list elements to Markdown
@@ -665,6 +1385,74 @@ export default {
       const atEndOfText = beforeCursor.length === fullText.length || beforeCursor.endsWith(' ')
       if (!atEndOfText) return
       
+      // Blockquote patterns: > text
+      const blockquoteMatch = fullText.match(/^>\s+(.+)$/)
+      if (blockquoteMatch) {
+        const content = blockquoteMatch[1] || '引用内容'
+        
+        // Create blockquote element
+        const blockquote = document.createElement('blockquote')
+        const p = document.createElement('p')
+        p.textContent = content
+        blockquote.appendChild(p)
+        
+        // Replace paragraph with blockquote
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(blockquote, blockElement)
+          
+          // Position cursor at end of blockquote content
+          const newRange = document.createRange()
+          newRange.selectNodeContents(p)
+          newRange.collapse(false)
+          
+          const selection = window.getSelection()
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+          
+          // Prevent the debounced conversion from interfering
+          setTimeout(() => {
+            this.debouncedConvertToMarkdown()
+          }, 100)
+        }
+        return
+      }
+      
+      // Code block patterns: ``` language
+      const codeBlockMatch = fullText.match(/^```(\w*)\s*$/)
+      if (codeBlockMatch) {
+        const language = codeBlockMatch[1] || ''
+        
+        // Create code block structure
+        const pre = document.createElement('pre')
+        const code = document.createElement('code')
+        
+        if (language) {
+          code.className = `language-${language}`
+        }
+        code.textContent = 'console.log("Hello World")'
+        pre.appendChild(code)
+        
+        // Replace paragraph with code block
+        if (blockElement.parentNode) {
+          blockElement.parentNode.replaceChild(pre, blockElement)
+          
+          // Position cursor inside code block
+          const newRange = document.createRange()
+          newRange.selectNodeContents(code)
+          newRange.collapse(false)
+          
+          const selection = window.getSelection()
+          selection.removeAllRanges()
+          selection.addRange(newRange)
+          
+          // Prevent the debounced conversion from interfering
+          setTimeout(() => {
+            this.debouncedConvertToMarkdown()
+          }, 100)
+        }
+        return
+      }
+      
       // Heading patterns: # text, ## text, etc.
       const headingMatch = fullText.match(/^(#{1,6})\s+(.+)$/)
       if (headingMatch) {
@@ -711,6 +1499,15 @@ export default {
         this.convertParagraphToList(blockElement, 'ol', content)
         return
       }
+      
+      // Task list patterns: - [ ] text, - [x] text
+      const taskListMatch = fullText.match(/^-\s+\[([ x])\]\s+(.+)$/)
+      if (taskListMatch) {
+        const checked = taskListMatch[1] === 'x'
+        const content = taskListMatch[2] || '任务项目'
+        this.convertParagraphToTaskList(blockElement, content, checked)
+        return
+      }
     },
 
     // Create inline element with content
@@ -718,6 +1515,44 @@ export default {
       const element = document.createElement(tagName)
       element.textContent = content
       return element
+    },
+
+    // Convert paragraph to task list item
+    convertParagraphToTaskList(paragraph, content, checked = false) {
+      const list = document.createElement('ul')
+      list.className = 'task-list'
+      const listItem = document.createElement('li')
+      listItem.className = 'task-list-item'
+      
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.className = 'task-list-item-checkbox'
+      checkbox.checked = checked
+      
+      const textSpan = document.createElement('span')
+      textSpan.textContent = content
+      
+      listItem.appendChild(checkbox)
+      listItem.appendChild(textSpan)
+      list.appendChild(listItem)
+      
+      if (paragraph.parentNode) {
+        paragraph.parentNode.replaceChild(list, paragraph)
+        
+        // Position cursor at end of task item text
+        const newRange = document.createRange()
+        newRange.selectNodeContents(textSpan)
+        newRange.collapse(false)
+        
+        const selection = window.getSelection()
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+        
+        // Prevent the debounced conversion from interfering
+        setTimeout(() => {
+          this.debouncedConvertToMarkdown()
+        }, 100)
+      }
     },
 
     // Convert paragraph to list item
@@ -1556,9 +2391,24 @@ export default {
   background: #f6f8fa;
   border-bottom: 1px solid #d0d7de;
   padding: 8px 12px;
+}
+
+.toolbar-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  margin-bottom: 4px;
+}
+
+.toolbar-row:last-child {
+  margin-bottom: 0;
+}
+
+.tex-toolbar {
+  background: #f1f8ff;
+  border-top: 1px solid #e1e4e8;
+  padding-top: 8px;
+  margin-top: 4px;
 }
 
 .vditor-toolbar__item {
@@ -1575,6 +2425,8 @@ export default {
   align-items: center;
   justify-content: center;
   transition: background-color 0.15s ease;
+  min-width: 28px;
+  min-height: 28px;
 }
 
 .vditor-toolbar__item button:hover {
@@ -1651,6 +2503,24 @@ export default {
   margin: 0.25em 0;
 }
 
+/* Task list styles */
+.vditor-wysiwyg ul.task-list {
+  list-style-type: none;
+  padding-left: 1.5em;
+}
+
+.vditor-wysiwyg li.task-list-item {
+  position: relative;
+  list-style-type: none;
+}
+
+.vditor-wysiwyg .task-list-item-checkbox {
+  position: absolute;
+  left: -1.5em;
+  top: 0.15em;
+  margin: 0;
+}
+
 .vditor-wysiwyg pre {
   background: #f6f8fa;
   border-radius: 6px;
@@ -1706,6 +2576,47 @@ export default {
   font-style: italic;
 }
 
+.vditor-wysiwyg mark {
+  background-color: #fff3cd;
+  padding: 0.1em 0.2em;
+}
+
+.vditor-wysiwyg hr {
+  border: none;
+  border-top: 1px solid #d0d7de;
+  margin: 24px 0;
+}
+
+/* Special element styles */
+.vditor-wysiwyg .toc-placeholder {
+  background: #f6f8fa;
+  padding: 8px;
+  border-radius: 4px;
+  margin: 16px 0;
+  font-family: monospace;
+  color: #656d76;
+  border: 1px solid #d0d7de;
+}
+
+.vditor-wysiwyg .tex-formula,
+.vditor-wysiwyg .tex-symbol {
+  background: #f6f8fa;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  color: #0969da;
+  border: 1px solid #e1e4e8;
+}
+
+/* Markdown indicator styles (vditor-style) */
+.markdown-indicator {
+  color: #999 !important;
+  font-size: 0.9em !important;
+  user-select: none !important;
+  opacity: 0.6 !important;
+  font-weight: normal !important;
+}
+
 .vditor-tooltipped {
   position: relative;
 }
@@ -1730,5 +2641,23 @@ export default {
 
 .vditor-tooltipped--n:hover:before {
   opacity: 1;
+}
+
+/* Responsive design for mobile */
+@media (max-width: 768px) {
+  .toolbar-row {
+    gap: 2px;
+  }
+  
+  .vditor-toolbar__item button {
+    padding: 4px 6px;
+    min-width: 24px;
+    min-height: 24px;
+  }
+  
+  .vditor-toolbar__item svg {
+    width: 14px;
+    height: 14px;
+  }
 }
 </style>
