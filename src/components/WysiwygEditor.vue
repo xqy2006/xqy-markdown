@@ -860,18 +860,18 @@ export default {
         element.style.cssText += 'font-weight: normal !important; font-style: normal !important; text-decoration: none !important; background: transparent !important; color: inherit !important;'
         element.classList.add('markdown-indicators-active')
         
-        // Create editable indicator spans
+        // Create editable indicator spans with improved editability
         const startSpan = document.createElement('span')
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
         startSpan.contentEditable = 'true'
-        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text;'
+        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
         endSpan.contentEditable = 'true'
-        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text;'
+        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text; user-select: text !important; -webkit-user-select: text !important; -moz-user-select: text !important;'
         
         // Prevent conversion while editing indicators
         startSpan.addEventListener('focus', () => {
@@ -881,16 +881,18 @@ export default {
           this.preventConversion = true
         })
         
-        // Add event listeners for indicator editing
+        // Add event listeners for indicator editing with improved handling
         startSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'start'))
         endSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'end'))
+        startSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'start'))
+        endSpan.addEventListener('keydown', (e) => this.handleIndicatorKeydown(e, element, 'end'))
         startSpan.addEventListener('blur', () => {
           this.preventConversion = false
-          this.debouncedConvertToMarkdown()
+          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
         })
         endSpan.addEventListener('blur', () => {
           this.preventConversion = false
-          this.debouncedConvertToMarkdown()
+          setTimeout(() => this.debouncedConvertToMarkdown(), 10)
         })
         
         // Insert indicators
@@ -898,10 +900,85 @@ export default {
         element.appendChild(endSpan)
         
         element.dataset.indicatorsShown = 'true'
+        this.markdownIndicatorsVisible = true
       }
     },
     
-    // Handle markdown indicator editing - vditor compliant
+    // Handle keydown events in markdown indicators for better editability
+    handleIndicatorKeydown(event, element, position) {
+      // Allow normal editing keys
+      if (event.key === 'Backspace' || event.key === 'Delete' || 
+          event.key === 'ArrowLeft' || event.key === 'ArrowRight' ||
+          event.key === 'Home' || event.key === 'End') {
+        return // Allow normal behavior
+      }
+      
+      // Handle Enter key to accept changes and move cursor
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        event.target.blur()
+        
+        // Move cursor to the content area
+        setTimeout(() => {
+          const selection = window.getSelection()
+          const range = document.createRange()
+          
+          if (position === 'start') {
+            // Move to beginning of element content
+            const firstTextNode = this.findFirstTextNode(element)
+            if (firstTextNode) {
+              range.setStart(firstTextNode, 0)
+            } else {
+              range.setStart(element, 1) // After start indicator
+            }
+          } else {
+            // Move to end of element content
+            const lastTextNode = this.findLastTextNode(element)
+            if (lastTextNode) {
+              range.setStart(lastTextNode, lastTextNode.textContent.length)
+            } else {
+              range.setStart(element, element.childNodes.length - 1) // Before end indicator
+            }
+          }
+          
+          range.collapse(true)
+          selection.removeAllRanges()
+          selection.addRange(range)
+        }, 10)
+      }
+    },
+    
+    // Find first text node in element (excluding indicators)
+    findFirstTextNode(element) {
+      for (let i = 0; i < element.childNodes.length; i++) {
+        const node = element.childNodes[i]
+        if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+          return node
+        } else if (node.nodeType === Node.ELEMENT_NODE && 
+                   !node.classList.contains('markdown-indicator')) {
+          const textNode = this.findFirstTextNode(node)
+          if (textNode) return textNode
+        }
+      }
+      return null
+    },
+    
+    // Find last text node in element (excluding indicators)
+    findLastTextNode(element) {
+      for (let i = element.childNodes.length - 1; i >= 0; i--) {
+        const node = element.childNodes[i]
+        if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+          return node
+        } else if (node.nodeType === Node.ELEMENT_NODE && 
+                   !node.classList.contains('markdown-indicator')) {
+          const textNode = this.findLastTextNode(node)
+          if (textNode) return textNode
+        }
+      }
+      return null
+    },
+    
+    // Handle markdown indicator editing - vditor compliant with improved functionality
     handleIndicatorEdit(event, element, position) {
       const indicator = event.target
       const newIndicator = indicator.textContent.trim()
@@ -922,7 +999,7 @@ export default {
       // Update the element based on the new indicator
       const tagName = element.tagName.toLowerCase()
       
-      // Handle different indicator patterns
+      // Handle different indicator patterns with improved detection
       if (newIndicator === '**' && (tagName !== 'strong' && tagName !== 'b')) {
         this.changeElementFormatting(element, 'strong')
       } else if (newIndicator === '*' && (tagName !== 'em' && tagName !== 'i')) {
@@ -931,6 +1008,12 @@ export default {
         this.changeElementFormatting(element, 's')
       } else if (newIndicator === '`' && tagName !== 'code') {
         this.changeElementFormatting(element, 'code')
+      } else if (newIndicator.startsWith('<u>') && tagName !== 'u') {
+        this.changeElementFormatting(element, 'u')
+      } else if (newIndicator.startsWith('<mark>') && tagName !== 'mark') {
+        this.changeElementFormatting(element, 'mark')
+      } else if (newIndicator.startsWith('<font') && tagName !== 'font') {
+        this.changeElementFormatting(element, 'font')
       }
       
       // Force markdown sync after indicator change
@@ -1006,6 +1089,27 @@ export default {
       // Check if cursor is inside a formatted element
       const formattedElement = this.getClosestFormattedElement(element)
       if (formattedElement) {
+        this.showMarkdownIndicators(formattedElement)
+      }
+    },
+    
+    // Show indicators when actively typing in formatted areas
+    showIndicatorsWhenTyping() {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      if (!range.collapsed) return
+      
+      // Find the current formatted element we're typing in
+      let currentElement = range.startContainer
+      if (currentElement.nodeType === Node.TEXT_NODE) {
+        currentElement = currentElement.parentElement
+      }
+      
+      // Check if we're inside a formatted element that doesn't have indicators yet
+      const formattedElement = this.getClosestFormattedElement(currentElement)
+      if (formattedElement && !formattedElement.dataset.indicatorsShown) {
         this.showMarkdownIndicators(formattedElement)
       }
     },
@@ -1453,9 +1557,10 @@ export default {
 
       this.debouncedConvertToMarkdown()
       
-      // Show markdown indicators immediately after input - no delay needed
+      // Show markdown indicators immediately after input - including when typing
       this.$nextTick(() => {
         this.showMarkdownIndicatorsAtCursor()
+        this.showIndicatorsWhenTyping()
       })
     },
 
@@ -2035,7 +2140,7 @@ export default {
       this.debouncedConvertToMarkdown()
     },
 
-    // Handle backspace key for better behavior
+    // Handle backspace key for better behavior and fix real-time rendering issues
     handleBackspaceKey(event) {
       const selection = window.getSelection()
       if (selection.rangeCount > 0) {
@@ -2065,15 +2170,47 @@ export default {
             selection.addRange(newRange)
             
             // Force markdown sync and ensure real-time rendering works after deletion
+            this.preventConversion = false  // Clear any conversion locks
             this.debouncedConvertToMarkdown()
             return
+          }
+          
+          // Special handling for empty paragraph/div scenarios to fix rendering issues
+          if (blockElement && (blockElement.tagName === 'P' || blockElement.tagName === 'DIV')) {
+            const isEmpty = !blockElement.textContent.trim() || blockElement.innerHTML === '<br>'
+            const isLastElement = !blockElement.nextElementSibling
+            
+            if (isEmpty && isLastElement) {
+              // This is the case where pressing backspace on empty element might break rendering
+              // Ensure we maintain a valid structure
+              setTimeout(() => {
+                if (this.$refs.editorContent.innerHTML.trim() === '' || 
+                    this.$refs.editorContent.innerHTML === '<br>') {
+                  this.$refs.editorContent.innerHTML = '<p><br></p>'
+                  
+                  // Position cursor in the new paragraph
+                  const newRange = document.createRange()
+                  const newP = this.$refs.editorContent.firstElementChild
+                  newRange.setStart(newP, 0)
+                  newRange.collapse(true)
+                  selection.removeAllRanges()
+                  selection.addRange(newRange)
+                }
+                
+                // Clear conversion locks and force re-render to fix the "# test" issue
+                this.preventConversion = false
+                this.isConverting = false
+                this.debouncedConvertToMarkdown()
+              }, 10)
+            }
           }
         }
         
         // For any other backspace, ensure proper re-rendering after deletion
         setTimeout(() => {
-          // Clear any conversion locks and force re-render
+          // Clear any conversion locks and force re-render to fix real-time rendering issues
           this.preventConversion = false
+          this.isConverting = false
           this.debouncedConvertToMarkdown()
         }, 10)
       }
@@ -2576,14 +2713,41 @@ export default {
       const range = selection.getRangeAt(0)
       let blockElement = this.getClosestBlockElement(range.startContainer)
       
+      // Check if we're already in a code block
+      const existingCodeBlock = this.getClosestElement(range.startContainer, 'PRE')
+      if (existingCodeBlock) {
+        // Convert code block back to paragraph
+        const p = document.createElement('p')
+        p.setAttribute('data-block', '0')
+        p.innerHTML = existingCodeBlock.textContent || '<br>'
+        existingCodeBlock.parentNode.replaceChild(p, existingCodeBlock)
+        
+        // Set cursor in paragraph
+        const newRange = document.createRange()
+        if (p.firstChild && p.firstChild.nodeType === Node.TEXT_NODE) {
+          newRange.setStart(p.firstChild, 0)
+        } else {
+          newRange.setStart(p, 0)
+        }
+        newRange.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(newRange)
+        
+        this.debouncedConvertToMarkdown()
+        return
+      }
+      
       // Create vditor-style code block structure
       const pre = document.createElement('pre')
       pre.setAttribute('data-block', '0')
-      const codeElement = document.createElement('code')
+      pre.style.cssText = 'margin: 0 0 16px 0; padding: 16px; background: #f6f8fa; border-radius: 6px; border: 1px solid #d0d7de; overflow-x: auto; font-family: "SF Mono", Monaco, Inconsolata, "Roboto Mono", Consolas, "Courier New", monospace; font-size: 85%; line-height: 1.45;'
       
-      // Start with empty content like vditor
-      codeElement.textContent = ''
+      const codeElement = document.createElement('code')
       codeElement.setAttribute('spellcheck', 'false')
+      codeElement.style.cssText = 'background: transparent !important; padding: 0 !important; border: none !important; border-radius: 0 !important; font-size: inherit; white-space: pre; word-break: normal; word-wrap: normal; color: #24292f;'
+      
+      // Start with placeholder text for language selection like vditor
+      codeElement.textContent = '语言\n'
       pre.appendChild(codeElement)
       
       if (blockElement && blockElement !== this.$refs.editorContent) {
@@ -2595,36 +2759,48 @@ export default {
         range.insertNode(pre)
       }
       
-      // Set cursor inside code block for immediate editing (vditor pattern)
+      // Set cursor after "语言" for immediate editing (vditor pattern)
       const newRange = document.createRange()
-      if (codeElement.firstChild) {
-        newRange.setStart(codeElement.firstChild, 0)
-      } else {
-        // Create text node if empty
-        const textNode = document.createTextNode('')
-        codeElement.appendChild(textNode)
-        newRange.setStart(textNode, 0)
+      const textNode = codeElement.firstChild
+      if (textNode) {
+        newRange.setStart(textNode, 2) // After "语言"
+        newRange.setEnd(textNode, 2)
       }
-      newRange.collapse(true)
-      selection.removeAllRanges()
+      selection.removeAllRanges()  
       selection.addRange(newRange)
       
       // Add proper event handlers for code block editing
-      this.setupCodeBlockHandlers(codeElement)
+      this.setupCodeBlockHandlers(pre, codeElement)
       
       this.debouncedConvertToMarkdown()
     },
 
-    // Setup code block event handlers - vditor style
-    setupCodeBlockHandlers(codeElement) {
-      // Handle Enter key properly within code blocks
+    // Setup code block event handlers - complete vditor compliance
+    setupCodeBlockHandlers(pre, codeElement) {
+      // Handle all keyboard events within code blocks
       codeElement.addEventListener('keydown', (event) => {
+        const selection = window.getSelection()
+        
         if (event.key === 'Enter') {
           event.preventDefault()
-          // Insert newline character instead of creating new elements
-          const selection = window.getSelection()
-          if (selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0)
+          
+          // Check if we're on the first line (language line)
+          const range = selection.getRangeAt(0)
+          const currentText = codeElement.textContent
+          const cursorPos = range.startOffset
+          const beforeCursor = currentText.substring(0, cursorPos)
+          const isFirstLine = !beforeCursor.includes('\n')
+          
+          if (isFirstLine) {
+            // Move to next line for actual code content
+            const textNode = document.createTextNode('\n')
+            range.insertNode(textNode)
+            range.setStartAfter(textNode)
+            range.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          } else {
+            // Insert newline for code content
             const textNode = document.createTextNode('\n')
             range.insertNode(textNode)
             range.setStartAfter(textNode)
@@ -2632,48 +2808,90 @@ export default {
             selection.removeAllRanges()
             selection.addRange(range)
           }
+          
         } else if (event.key === 'Tab') {
           event.preventDefault()
-          // Insert tab character
-          const selection = window.getSelection()
+          // Insert 2-space indentation like vditor
           if (selection.rangeCount > 0) {
             const range = selection.getRangeAt(0)
-            const textNode = document.createTextNode('  ') // 2 spaces for tab
+            const textNode = document.createTextNode('  ')
             range.insertNode(textNode)
             range.setStartAfter(textNode)
             range.collapse(true)
-            selection.removeAllRanges()
+            selection.removeAllRanges()  
             selection.addRange(range)
           }
+          
         } else if (event.key === 'Backspace') {
-          // Handle code block deletion
-          const selection = window.getSelection()
+          // Handle code block deletion - vditor style
           if (selection.rangeCount > 0) {
             const range = selection.getRangeAt(0)
-            if (range.startOffset === 0 && codeElement.textContent === '') {
-              // Delete empty code block
+            const isEmpty = !codeElement.textContent.trim() || 
+                           codeElement.textContent.trim() === '语言'
+            
+            if (range.startOffset === 0 && isEmpty) {
+              // Delete empty code block and convert to paragraph
               event.preventDefault()
-              const pre = codeElement.closest('pre')
-              if (pre) {
-                const p = document.createElement('p')
-                p.setAttribute('data-block', '0')
-                p.innerHTML = '<br>'
-                pre.parentNode.replaceChild(p, pre)
-                
-                // Set cursor in new paragraph
-                const newRange = document.createRange()
-                newRange.setStart(p, 0)
-                newRange.collapse(true)
-                selection.removeAllRanges()
-                selection.addRange(newRange)
-              }
+              const p = document.createElement('p')
+              p.setAttribute('data-block', '0')  
+              p.innerHTML = '<br>'
+              pre.parentNode.replaceChild(p, pre)
+              
+              // Set cursor in new paragraph
+              const newRange = document.createRange()
+              newRange.setStart(p, 0)
+              newRange.collapse(true)
+              selection.removeAllRanges()
+              selection.addRange(newRange)
+              
+              // Force markdown sync
+              setTimeout(() => {
+                this.debouncedConvertToMarkdown()
+              }, 10)
             }
           }
         }
       })
       
-      // Handle input for language detection and highlighting
+      // Handle input for language detection and syntax highlighting
       codeElement.addEventListener('input', () => {
+        const content = codeElement.textContent
+        const lines = content.split('\n')
+        
+        if (lines.length > 1) {
+          // First line is language, rest is code
+          const language = lines[0].trim().toLowerCase()
+          const codeContent = lines.slice(1).join('\n')
+          
+          // Apply syntax highlighting if language is specified
+          if (language && language !== '语言') {
+            codeElement.className = `language-${language}`
+            
+            // Trigger hljs highlighting if available
+            if (window.hljs) {
+              try {
+                window.hljs.highlightElement(codeElement)
+              } catch (e) {
+                console.warn('Syntax highlighting failed:', e)
+              }
+            }
+          }
+        }
+        
+        // Debounced markdown conversion
+        setTimeout(() => {
+          this.debouncedConvertToMarkdown()
+        }, 100)
+      })
+      
+      // Handle focus/blur for better UX
+      codeElement.addEventListener('focus', () => {
+        pre.style.border = '1px solid #0969da'
+      })
+      
+      codeElement.addEventListener('blur', () => {
+        pre.style.border = '1px solid #d0d7de'
+        // Final markdown sync
         this.debouncedConvertToMarkdown()
       })
     },
@@ -2957,9 +3175,55 @@ export default {
   border: 1px solid #d0d7de;
 }
 
-/* Markdown indicators styling */
+/* Markdown indicators styling - improved editability */
 .vditor-wysiwyg .markdown-indicator {
   color: #8b949e !important;
+  font-size: 0.9em;
+  opacity: 0.7;
+  background: rgba(175,184,193,0.1);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 1px;
+  cursor: text;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  display: inline !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+  text-decoration: none !important;
+}
+
+/* Ensure proper styling when indicators are active */
+.vditor-wysiwyg .markdown-indicators-active {
+  font-weight: normal !important;
+  font-style: normal !important;
+  text-decoration: none !important;
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* Override any conflicting styles for inline code with indicators */
+.vditor-wysiwyg code.markdown-indicators-active {
+  background: rgba(175, 184, 193, 0.2) !important;
+  padding: 0.2em 0.4em !important;
+  border-radius: 6px !important;
+  font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace !important;
+  font-size: 85% !important;
+  color: #24292f !important;
+  border: 1px solid rgba(175, 184, 193, 0.1) !important;
+}
+
+/* Ensure blockquote background is maintained even with indicators */
+.vditor-wysiwyg blockquote,
+.vditor-wysiwyg blockquote.markdown-indicators-active {
+  margin: 0 0 16px 0 !important;
+  padding: 0 1em !important;
+  color: #656d76 !important;
+  border-left: 0.25em solid #d0d7de !important;
+  background: #f6f8fa !important;
+  border-radius: 0 6px 6px 0 !important;
+}
   font-weight: normal !important;
   opacity: 0.7;
   user-select: none;
