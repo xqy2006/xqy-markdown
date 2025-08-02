@@ -3224,11 +3224,6 @@ export default {
   background: #f6f8fa !important;
   border-radius: 0 6px 6px 0 !important;
 }
-  font-weight: normal !important;
-  opacity: 0.7;
-  user-select: none;
-  pointer-events: none;
-}
 
 /* Task list styles */
 .vditor-wysiwyg ul.task-list {
