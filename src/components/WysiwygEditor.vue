@@ -317,7 +317,6 @@
       @focus="handleFocus"
       @blur="handleBlur"
       @click="handleClick"
-      @selectstart="handleSelectionChange"
       @compositionstart="handleCompositionStart"
       @compositionend="handleCompositionEnd"
       v-html="htmlContent"
@@ -857,24 +856,42 @@ export default {
       }
       
       if (startIndicator && endIndicator) {
+        // Stop visual styling when showing indicators (vditor pattern)
+        element.style.cssText += 'font-weight: normal !important; font-style: normal !important; text-decoration: none !important; background: transparent !important; color: inherit !important;'
+        element.classList.add('markdown-indicators-active')
+        
         // Create editable indicator spans
         const startSpan = document.createElement('span')
         startSpan.className = 'markdown-indicator markdown-indicator-start'
         startSpan.textContent = startIndicator
         startSpan.contentEditable = 'true'
-        startSpan.style.cssText = 'color: #999; font-size: 0.9em; opacity: 0.6; background: rgba(255,255,255,0.1); border-radius: 2px; padding: 0 1px;'
+        startSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text;'
         
         const endSpan = document.createElement('span')
         endSpan.className = 'markdown-indicator markdown-indicator-end'  
         endSpan.textContent = endIndicator
         endSpan.contentEditable = 'true'
-        endSpan.style.cssText = 'color: #999; font-size: 0.9em; opacity: 0.6; background: rgba(255,255,255,0.1); border-radius: 2px; padding: 0 1px;'
+        endSpan.style.cssText = 'color: #8b949e !important; font-size: 0.9em; opacity: 0.7; background: rgba(175,184,193,0.1); border-radius: 2px; padding: 0 2px; margin: 0 1px; cursor: text;'
+        
+        // Prevent conversion while editing indicators
+        startSpan.addEventListener('focus', () => {
+          this.preventConversion = true
+        })
+        endSpan.addEventListener('focus', () => {
+          this.preventConversion = true
+        })
         
         // Add event listeners for indicator editing
         startSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'start'))
         endSpan.addEventListener('input', (e) => this.handleIndicatorEdit(e, element, 'end'))
-        startSpan.addEventListener('blur', () => this.debouncedConvertToMarkdown())
-        endSpan.addEventListener('blur', () => this.debouncedConvertToMarkdown())
+        startSpan.addEventListener('blur', () => {
+          this.preventConversion = false
+          this.debouncedConvertToMarkdown()
+        })
+        endSpan.addEventListener('blur', () => {
+          this.preventConversion = false
+          this.debouncedConvertToMarkdown()
+        })
         
         // Insert indicators
         element.insertBefore(startSpan, element.firstChild)
@@ -960,10 +977,14 @@ export default {
     hideMarkdownIndicators() {
       const indicators = this.$refs.editorContent.querySelectorAll('.markdown-indicator')
       indicators.forEach(indicator => {
+        const parentElement = indicator.parentElement
         indicator.remove()
-        // Remove the flag from parent element
-        if (indicator.parentElement) {
-          delete indicator.parentElement.dataset.indicatorsShown
+        // Remove the flag and restore styling from parent element
+        if (parentElement) {
+          delete parentElement.dataset.indicatorsShown
+          parentElement.classList.remove('markdown-indicators-active')
+          // Restore original styling
+          parentElement.style.cssText = parentElement.style.cssText.replace(/font-weight: normal !important;|font-style: normal !important;|text-decoration: none !important;|background: transparent !important;|color: inherit !important;/g, '')
         }
       })
     },
@@ -2656,6 +2677,50 @@ export default {
         this.debouncedConvertToMarkdown()
       })
     },
+
+    // Handle global selection change for keyboard navigation (vditor-style)
+    handleGlobalSelectionChange() {
+      // Only handle if this editor is active
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return
+      
+      const range = selection.getRangeAt(0)
+      const editorContent = this.$refs.editorContent
+      
+      // Check if selection is within this editor
+      if (!editorContent || !editorContent.contains(range.commonAncestorContainer)) {
+        return
+      }
+      
+      // Clear existing indicators first
+      this.hideMarkdownIndicators()
+      
+      // Use a small delay to allow selection to stabilize
+      setTimeout(() => {
+        this.showMarkdownIndicatorsAtCursor()
+      }, 10)
+    }
+  },
+
+  // Vue lifecycle methods
+  mounted() {
+    // Add global selection change listener for keyboard navigation
+    document.addEventListener('selectionchange', this.handleGlobalSelectionChange)
+    
+    // Convert initial markdown to HTML
+    if (this.modelValue) {
+      this.htmlContent = this.markdownToHtml(this.modelValue)
+      this.$refs.editorContent.innerHTML = this.htmlContent
+    } else {
+      // Set empty content
+      this.htmlContent = '<p><br></p>'
+      this.$refs.editorContent.innerHTML = '<p><br></p>'
+    }
+  },
+
+  beforeUnmount() {
+    // Remove global selection change listener
+    document.removeEventListener('selectionchange', this.handleGlobalSelectionChange)
   }
 }
 </script>
@@ -2784,13 +2849,13 @@ export default {
   margin: 0.25em 0;
 }
 
-/* Blockquote styling - GitHub style */
+/* Blockquote styling - Fixed GitHub style */
 .vditor-wysiwyg blockquote {
   margin: 0 0 16px 0;
   padding: 0 1em;
   color: #656d76;
   border-left: 0.25em solid #d0d7de;
-  background: #f6f8fa;
+  background: #f6f8fa !important;
   border-radius: 0 6px 6px 0;
 }
 
@@ -2822,13 +2887,15 @@ export default {
   word-wrap: normal;
 }
 
-/* Inline code styling */
+/* Inline code styling - Fixed with proper background */
 .vditor-wysiwyg code {
-  background: rgba(175, 184, 193, 0.2);
+  background: rgba(175, 184, 193, 0.2) !important;
   padding: 0.2em 0.4em;
   border-radius: 6px;
   font-family: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 85%;
+  color: #24292f;
+  border: 1px solid rgba(175, 184, 193, 0.1);
 }
 
 /* Task list styling */
@@ -2989,6 +3056,25 @@ export default {
 /* Markdown indicator styles (vditor-style) */
 .markdown-indicator {
   color: #999 !important;
+  font-size: 0.9em !important;
+  opacity: 0.7;
+  background: rgba(175,184,193,0.1);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 1px;
+  cursor: text;
+  user-select: text;
+  pointer-events: auto;
+}
+
+/* When markdown indicators are active, suppress element styling */
+.markdown-indicators-active {
+  font-weight: normal !important;
+  font-style: normal !important; 
+  text-decoration: none !important;
+  background: transparent !important;
+  color: inherit !important;
+}
   font-size: 0.9em !important;
   user-select: none !important;
   opacity: 0.6 !important;
